@@ -74,6 +74,8 @@ const BOUNDS = { lonMin: -5.2, lonMax: 9.6, latMin: 41.3, latMax: 51.2 };
 const PADDING = 40;
 let SVG_W = 0, SVG_H = 0;
 let _scale = 1, _offX = 0, _offY = 0;
+let _vbAnimId = null;
+let _currentVB = { x: 0, y: 0, w: 0, h: 0 };
 
 function computeProjection() {
   const COS = Math.cos((46.5 * Math.PI) / 180);
@@ -92,6 +94,65 @@ function project(lat, lon) {
     x: (lon - BOUNDS.lonMin) * COS * 111.32 * _scale + _offX,
     y: (BOUNDS.latMax - lat) * 111.32 * _scale + _offY,
   };
+}
+
+function fullViewBox() {
+  return { x: 0, y: 0, w: SVG_W, h: SVG_H };
+}
+
+function setViewBox(vb) {
+  svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  _currentVB = { ...vb };
+}
+
+function animateViewBox(from, to, duration, onDone) {
+  if (_vbAnimId) cancelAnimationFrame(_vbAnimId);
+  const start = performance.now();
+  function frame(now) {
+    let t = Math.min((now - start) / duration, 1);
+    t = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const vb = {
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t,
+      w: from.w + (to.w - from.w) * t,
+      h: from.h + (to.h - from.h) * t,
+    };
+    setViewBox(vb);
+    if (t < 1) {
+      _vbAnimId = requestAnimationFrame(frame);
+    } else {
+      _vbAnimId = null;
+      if (onDone) onDone();
+    }
+  }
+  _vbAnimId = requestAnimationFrame(frame);
+}
+
+function zoomToPoints(points, holdMs) {
+  const PAD = 80;
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  let minX = Math.min(...xs) - PAD;
+  let maxX = Math.max(...xs) + PAD;
+  let minY = Math.min(...ys) - PAD;
+  let maxY = Math.max(...ys) + PAD;
+
+  const svgAspect = SVG_W / SVG_H;
+  const boxW = maxX - minX;
+  const boxH = maxY - minY;
+  if (boxW / boxH > svgAspect) {
+    const extraH = (boxW / svgAspect - boxH) / 2;
+    minY -= extraH; maxY += extraH;
+  } else {
+    const extraW = (boxH * svgAspect - boxW) / 2;
+    minX -= extraW; maxX += extraW;
+  }
+
+  const target = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  const full = fullViewBox();
+  animateViewBox(full, target, 600, () => {
+    setTimeout(() => animateViewBox(target, full, 600), holdMs);
+  });
 }
 
 function geoJsonToSvgPath(coords) {
@@ -165,14 +226,21 @@ function init() {
   svg = document.getElementById("map-svg");
 
   function resize() {
+    if (_vbAnimId) { cancelAnimationFrame(_vbAnimId); _vbAnimId = null; }
     const rect = svg.getBoundingClientRect();
     SVG_W = rect.width;
     SVG_H = rect.height;
     computeProjection();
+    setViewBox(fullViewBox());
     redrawAll();
   }
   new ResizeObserver(resize).observe(svg);
   resize();
+
+  svg.addEventListener("mousemove", onSvgMouseMove);
+  svg.addEventListener("mouseleave", () => {
+    svg.querySelectorAll(".hover-label").forEach(l => l.classList.remove("visible"));
+  });
 
   document.getElementById("date-display").textContent = displayStr;
   document.getElementById("header-num").textContent = "#" + challengeNumber();
@@ -269,7 +337,9 @@ function redrawFrance() {
 function redrawAll() {
   redrawFrance();
 
-  if (awaitingNextRound && roundResults.length > 0) {
+  if (currentRound >= 5 && roundResults.length === 5) {
+    drawSummary();
+  } else if (awaitingNextRound && roundResults.length > 0) {
     // Redraw the current round's reveal (no animation)
     const r = roundResults[roundResults.length - 1];
     currentRoundLayer = drawRevealedRound(r.target, r.guess, r.km, false);
@@ -278,7 +348,48 @@ function redrawAll() {
   }
 }
 
-// ---- Target dot (anonymous, no label) ----
+// ---- Nearest-dot hover logic ----
+function onSvgMouseMove(e) {
+  const rect = svg.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const dots = svg.querySelectorAll(".hover-dot");
+  let closest = null, closestDist = Infinity;
+
+  for (const g of dots) {
+    const circle = g.querySelector("circle");
+    if (!circle) continue;
+    const cx = parseFloat(circle.getAttribute("cx"));
+    const cy = parseFloat(circle.getAttribute("cy"));
+    const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closest = g;
+    }
+  }
+
+  for (const g of dots) {
+    const lbl = g.querySelector(".hover-label");
+    if (lbl) lbl.classList.toggle("visible", g === closest && closestDist < 40);
+  }
+}
+
+// ---- Hover label helper ----
+function makeHoverDot(p, fill, stroke, r, label, labelColor, above, strokeWidth = 1.5, alwaysShow = false) {
+  const g = svgEl("g");
+  g.classList.add("hover-dot");
+  const dot = svgEl("circle", { cx: p.x, cy: p.y, r, fill, stroke, "stroke-width": strokeWidth });
+  g.appendChild(dot);
+  // Transparent larger circle expands the hover hit area
+  g.appendChild(svgEl("circle", { cx: p.x, cy: p.y, r: 14, fill: "transparent", stroke: "none" }));
+  const lbl = makeSvgLabel(label, p, labelColor, 12, above);
+  if (!alwaysShow) lbl.classList.add("hover-label");
+  g.appendChild(lbl);
+  return { g, dot };
+}
+
+// ---- Target dot (anonymous, hollow, no label) ----
 function showTargetDot(city, animate = true) {
   const old = document.getElementById("target-layer");
   if (old) old.remove();
@@ -286,7 +397,7 @@ function showTargetDot(city, animate = true) {
   const g = svgEl("g");
   g.id = "target-layer";
   const p = project(city[0], city[1]);
-  const dot = svgEl("circle", { cx: p.x, cy: p.y, r: 5, fill: "#3b82f6" });
+  const dot = svgEl("circle", { cx: p.x, cy: p.y, r: TARGET_R, fill: "none", stroke: "#3b82f6", "stroke-width": "3" });
   if (animate && !targetDotShown) {
     dot.classList.add("dot-anim");
     targetDotShown = true;
@@ -297,6 +408,7 @@ function showTargetDot(city, animate = true) {
 
 // ---- Draw a revealed round's elements ----
 const ANIM_MS = 1200; // must match draw-line CSS animation duration
+const TARGET_R = 4;   // radius of the hollow target dot
 
 function drawRevealedRound(target, guess, km, animate) {
   const color = guessColor(km);
@@ -308,33 +420,36 @@ function drawRevealedRound(target, guess, km, animate) {
 
   const dx = pG.x - pT.x, dy = pG.y - pT.y;
   const len = Math.sqrt(dx * dx + dy * dy);
+  // Line starts from the border of the target dot, not its center
+  const ux = dx / len, uy = dy / len;
+  const lineX1 = pT.x + ux * TARGET_R, lineY1 = pT.y + uy * TARGET_R;
 
   if (animate) {
     const exact = target[3] === guess[3];
 
     if (exact) {
       // No line, instant reveal
-      g.appendChild(svgEl("circle", { cx: pT.x, cy: pT.y, r: 5, fill: "#3b82f6" }));
+      const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", true, 3);
       svg.appendChild(g);
-      const gDot = svgEl("circle", { cx: pG.x, cy: pG.y, r: 5, fill: color });
+      g.appendChild(tHg);
+      const { g: gHg, dot: gDot } = makeHoverDot(pG, color, color, 5, guess[2], color, true, 1.5, true);
       gDot.classList.add("dot-anim");
-      g.appendChild(gDot);
-      const gLbl = makeSvgLabel(guess[2], pG, color, 12, true);
-      gLbl.classList.add("dot-anim");
-      g.appendChild(gLbl);
+      g.appendChild(gHg);
       flashKm(km, color);
       return g;
     }
 
     // Start gold, schedule color swaps at the exact moment the line reaches 50km / 150km
+    const lineLen = len - TARGET_R;
     const line = svgEl("line", {
-      x1: pT.x, y1: pT.y, x2: pG.x, y2: pG.y,
-      stroke: "#f59e0b", "stroke-width": "2", "stroke-dasharray": `${len}`, opacity: "0.9",
+      x1: lineX1, y1: lineY1, x2: pG.x, y2: pG.y,
+      stroke: "#f59e0b", "stroke-width": "2", "stroke-dasharray": `${lineLen}`, opacity: "0.9",
     });
-    line.style.setProperty("--line-len", len);
+    line.style.setProperty("--line-len", lineLen);
     line.classList.add("line-draw");
     g.appendChild(line);
-    g.appendChild(svgEl("circle", { cx: pT.x, cy: pT.y, r: 5, fill: "#3b82f6" }));
+    const { g: tHgAnim } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", true, 3);
+    g.appendChild(tHgAnim);
     svg.appendChild(g);
 
     if (km > 50)  setTimeout(() => line.setAttribute("stroke", "#94a3b8"), ANIM_MS * (50  / km));
@@ -345,35 +460,29 @@ function drawRevealedRound(target, guess, km, animate) {
       line.setAttribute("stroke-dasharray", "4 3");
       line.style.removeProperty("--line-len");
 
-      const gDot = svgEl("circle", { cx: pG.x, cy: pG.y, r: 5, fill: color });
-      gDot.classList.add("dot-anim");
-      g.appendChild(gDot);
-
       const tAbove = pT.y <= pG.y;
-      const tLbl = makeSvgLabel(target[2], pT, "#3b82f6", 12, tAbove);
-      tLbl.classList.add("dot-anim");
-      g.appendChild(tLbl);
+      const { g: gHg, dot: gDot } = makeHoverDot(pG, color, color, 5, guess[2], color, !tAbove, 1.5, true);
+      gDot.classList.add("dot-anim");
+      g.appendChild(gHg);
 
-      const gLbl = makeSvgLabel(guess[2], pG, color, 12, !tAbove);
-      gLbl.classList.add("dot-anim");
-      g.appendChild(gLbl);
-
+      drawNearbyLandmarks(g, [target[0], target[1]], km, [[target[0], target[1]], [guess[0], guess[1]]]);
       flashKm(km, color);
+      // zoomToPoints([pT, pG], 1800);
     }, 1300);
 
     return g;
 
   } else {
-    g.appendChild(svgEl("line", {
-      x1: pT.x, y1: pT.y, x2: pG.x, y2: pG.y,
-      stroke: color, "stroke-width": "2", "stroke-dasharray": "4 3", opacity: "0.9",
-    }));
-    g.appendChild(svgEl("circle", { cx: pT.x, cy: pT.y, r: 5, fill: "#3b82f6" }));
-    g.appendChild(svgEl("circle", { cx: pG.x, cy: pG.y, r: 5, fill: color }));
     const exact = target[3] === guess[3];
     const tAbove = pT.y <= pG.y;
-    if (!exact) g.appendChild(makeSvgLabel(target[2], pT, "#3b82f6", 12, tAbove));
-    g.appendChild(makeSvgLabel(guess[2], pG, color, 12, exact ? true : !tAbove));
+    g.appendChild(svgEl("line", {
+      x1: lineX1, y1: lineY1, x2: pG.x, y2: pG.y,
+      stroke: color, "stroke-width": "2", "stroke-dasharray": "4 3", opacity: "0.9",
+    }));
+    const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", tAbove, 3);
+    g.appendChild(tHg);
+    const { g: gHg } = makeHoverDot(pG, color, color, 5, guess[2], color, !tAbove, 1.5, true);
+    g.appendChild(gHg);
     svg.appendChild(g);
     return g;
   }
@@ -386,6 +495,25 @@ function flashKm(km, color) {
   el.classList.remove("playing");
   void el.offsetWidth; // force reflow to restart animation
   el.classList.add("playing");
+}
+
+function drawNearbyLandmarks(g, targetLatLon, guessKm, excludeLatLons = []) {
+  const nearby = LANDMARKS
+    .filter(([lat, lon]) =>
+      haversineKm([lat, lon], targetLatLon) < guessKm &&
+      !excludeLatLons.some(([elat, elon]) => elat === lat && elon === lon)
+    )
+    .sort(([latA, lonA], [latB, lonB]) =>
+      haversineKm([latA, lonA], targetLatLon) - haversineKm([latB, lonB], targetLatLon)
+    )
+    .slice(0, 2);
+  for (const [lat, lon, name] of nearby) {
+    const p = project(lat, lon);
+    const color = guessColor(haversineKm([lat, lon], targetLatLon));
+    const { g: hg } = makeHoverDot(p, color, color, 4, name, color, true);
+    hg.style.opacity = "0.8";
+    g.appendChild(hg);
+  }
 }
 
 function makeSvgLabel(name, p, color, size, above = false) {
@@ -547,14 +675,16 @@ function submitGuess() {
   currentRound++;
   saveState();
 
-  if (currentRound >= 5) {
-    setTimeout(endGame, exact ? 300 : 1200);
-  } else {
-    setTimeout(() => {
-      document.getElementById("next-row").classList.remove("hidden");
-      document.getElementById("next-row").classList.add("fade-in");
-    }, nextDelay);
-  }
+  setTimeout(() => {
+    const nextRow = document.getElementById("next-row");
+    const nextBtn = document.getElementById("next-btn");
+    if (currentRound >= 5) {
+      nextBtn.textContent = "Results →";
+      nextBtn.onclick = endGame;
+    }
+    nextRow.classList.remove("hidden");
+    nextRow.classList.add("fade-in");
+  }, nextDelay);
 }
 
 function showIntro() {
@@ -593,10 +723,48 @@ function addGuessRow(guessName, km) {
   return li.querySelector(".guess-dist");
 }
 
+// ---- Summary map (end of game) ----
+function drawSummary() {
+  const old = document.getElementById("summary-layer");
+  if (old) old.remove();
+
+  const g = svgEl("g");
+  g.id = "summary-layer";
+
+  for (const { target, guess, km } of roundResults) {
+    const color = guessColor(km);
+    const pT = project(target[0], target[1]);
+    const pG = project(guess[0], guess[1]);
+    const exact = target[3] === guess[3];
+    const tAbove = pT.y <= pG.y;
+
+    if (!exact) {
+      const sdx = pG.x - pT.x, sdy = pG.y - pT.y;
+      const slen = Math.sqrt(sdx * sdx + sdy * sdy);
+      const sux = sdx / slen, suy = sdy / slen;
+      g.appendChild(svgEl("line", {
+        x1: pT.x + sux * TARGET_R, y1: pT.y + suy * TARGET_R, x2: pG.x, y2: pG.y,
+        stroke: color, "stroke-width": "2", "stroke-dasharray": "4 3", opacity: "0.9",
+      }));
+    }
+    const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", tAbove, 3);
+    g.appendChild(tHg);
+    const { g: gHg } = makeHoverDot(pG, color, color, 5, guess[2], color, !tAbove, 1.5, true);
+    g.appendChild(gHg);
+  }
+
+  svg.appendChild(g);
+}
+
 // ---- End game ----
 function endGame() {
-  document.getElementById("city-input").disabled = true;
-  document.getElementById("submit-btn").disabled = true;
+  document.getElementById("next-row").classList.add("hidden");
+
+  if (currentRoundLayer) {
+    currentRoundLayer.remove();
+    currentRoundLayer = null;
+  }
+  drawSummary();
 
   const banner = document.getElementById("celebration-banner");
   document.getElementById("celebration-text").textContent = `🎉 Total: ${totalKm} km`;
@@ -620,7 +788,7 @@ function shareEmoji(km) {
 
 function shareScore() {
   const lines = roundResults.map(({ km }) => `${shareEmoji(km)} ${km} km`).join("\n");
-  const text = `GeoSpot #${challengeNumber()} — ${displayStr}\nhttps://geospot.app\n\n${lines}\n\nTotal: ${totalKm} km`;
+  const text = `GeoSpot #${challengeNumber()} — ${displayStr}\nhttps://capitainecookie.github.io/geospot/\n\n${lines}\n\nTotal: ${totalKm} km`;
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.getElementById("share-btn");
     btn.textContent = "Copied!";

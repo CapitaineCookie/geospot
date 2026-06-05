@@ -1,5 +1,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ---- Hover dots on SVG map ---- */
+.hover-dot { cursor: default; }
+.hover-label { opacity: 0; transition: opacity 0.1s; }
+.hover-label.visible { opacity: 1; }
+
 :root {
   --c-bg:        #111827;
   --c-surface:   #1f2937;
