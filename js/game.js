@@ -383,7 +383,11 @@ function onSvgMouseMove(e) {
 
   for (const g of dots) {
     const lbl = g.querySelector(".hover-label");
-    if (lbl) lbl.classList.toggle("visible", g === closest && closestDist < 40);
+    const show = g === closest && closestDist < 40;
+    if (lbl) {
+      lbl.classList.toggle("visible", show);
+      if (show && g.parentNode) g.parentNode.appendChild(g);
+    }
   }
 }
 
