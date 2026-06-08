@@ -781,9 +781,9 @@ function endGame() {
 
 // ---- Share ----
 function shareEmoji(km) {
-  if (km < 50)  return "🟢";
-  if (km < 150) return "🟡";
-  return "🔴";
+  if (km < 50)  return "🟡";
+  if (km < 150) return "⚪";
+  return "🟠";
 }
 
 function shareScore() {
