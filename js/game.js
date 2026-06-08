@@ -27,7 +27,7 @@ function todayString() {
 }
 
 function challengeNumber() {
-  const origin = new Date("2026-06-03");
+  const origin = new Date("2026-06-08");
   const today = new Date(todayString());
   return Math.floor((today - origin) / 86400000) + 1;
 }
@@ -55,15 +55,27 @@ const CITIES = CITIES_DATA.map(c => [
 // Pick 5 distinct cities for today, seeded by date
 function pickTodaysCities() {
   const today = todayString();
-  const rng = makePrng(seedFromDate("gespot:" + today));
+  const rng = makePrng(seedFromDate("gespot-v2:" + today));
   const candidates = CITIES.filter(c => c);
+  // Fisher-Yates shuffle using the seeded PRNG
+  const shuffled = [...candidates];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  // Greedy pass: take any city at least 150 km from all already chosen
   const chosen = [];
-  const usedIdx = new Set();
-  while (chosen.length < 5) {
-    const i = Math.floor(rng() * candidates.length);
-    if (!usedIdx.has(i)) {
-      usedIdx.add(i);
-      chosen.push(candidates[i]);
+  for (const city of shuffled) {
+    if (chosen.every(c => haversineKm(c, city) >= 150)) chosen.push(city);
+    if (chosen.length === 5) break;
+  }
+
+  // Fallback (dataset too small to satisfy constraint): fill with any unchosen city
+  if (chosen.length < 5) {
+    for (const city of shuffled) {
+      if (!chosen.includes(city)) chosen.push(city);
+      if (chosen.length === 5) break;
     }
   }
   return chosen;
@@ -460,8 +472,7 @@ function drawRevealedRound(target, guess, km, animate) {
       line.setAttribute("stroke-dasharray", "4 3");
       line.style.removeProperty("--line-len");
 
-      const tAbove = pT.y <= pG.y;
-      const { g: gHg, dot: gDot } = makeHoverDot(pG, color, color, 5, guess[2], color, !tAbove, 1.5, true);
+        const { g: gHg, dot: gDot } = makeHoverDot(pG, color, color, 5, guess[2], color, true, 1.5, true);
       gDot.classList.add("dot-anim");
       g.appendChild(gHg);
 
@@ -473,15 +484,13 @@ function drawRevealedRound(target, guess, km, animate) {
     return g;
 
   } else {
-    const exact = target[3] === guess[3];
-    const tAbove = pT.y <= pG.y;
     g.appendChild(svgEl("line", {
       x1: lineX1, y1: lineY1, x2: pG.x, y2: pG.y,
       stroke: color, "stroke-width": "2", "stroke-dasharray": "4 3", opacity: "0.9",
     }));
-    const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", tAbove, 3);
+    const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", true, 3);
     g.appendChild(tHg);
-    const { g: gHg } = makeHoverDot(pG, color, color, 5, guess[2], color, !tAbove, 1.5, true);
+    const { g: gHg } = makeHoverDot(pG, color, color, 5, guess[2], color, true, 1.5, true);
     g.appendChild(gHg);
     svg.appendChild(g);
     return g;
@@ -736,7 +745,6 @@ function drawSummary() {
     const pT = project(target[0], target[1]);
     const pG = project(guess[0], guess[1]);
     const exact = target[3] === guess[3];
-    const tAbove = pT.y <= pG.y;
 
     if (!exact) {
       const sdx = pG.x - pT.x, sdy = pG.y - pT.y;
@@ -747,9 +755,9 @@ function drawSummary() {
         stroke: color, "stroke-width": "2", "stroke-dasharray": "4 3", opacity: "0.9",
       }));
     }
-    const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", tAbove, 3);
+    const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", true, 3);
     g.appendChild(tHg);
-    const { g: gHg } = makeHoverDot(pG, color, color, 5, guess[2], color, !tAbove, 1.5, true);
+    const { g: gHg } = makeHoverDot(pG, color, color, 5, guess[2], color, true, 1.5, true);
     g.appendChild(gHg);
   }
 
