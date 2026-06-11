@@ -256,7 +256,7 @@ function init() {
 
   document.getElementById("date-display").textContent = displayStr;
   document.getElementById("header-num").textContent = "#" + challengeNumber();
-  document.getElementById("intro-challenge").textContent = `Daily challenge #${challengeNumber()}`;
+  document.getElementById("intro-challenge").textContent = `Défi du jour #${challengeNumber()}`;
   document.getElementById("intro-date").textContent = displayStr;
 
   const saved = loadState();
@@ -609,6 +609,7 @@ function updateSuggestions() {
       // This prevents "Le Pertuis" appearing when typing "pertuis"
       return n.startsWith(val) || (nna !== n && nna.startsWith(valNoArticle));
     })
+    .sort((a, b) => a[2].length - b[2].length)
     .slice(0, 6);
 
   if (!matches.length) { hideSuggestions(); return; }
@@ -655,7 +656,7 @@ function submitGuess() {
     ? candidates.reduce((best, c) => haversineKm(c, target) < haversineKm(best, target) ? c : best)
     : candidates[0];
 
-  if (!guess) { showMessage("City not found.", "error"); return; }
+  if (!guess) { showMessage("Ville introuvable.", "error"); return; }
 
   input.value = "";
   hideSuggestions();
@@ -692,7 +693,7 @@ function submitGuess() {
     const nextRow = document.getElementById("next-row");
     const nextBtn = document.getElementById("next-btn");
     if (currentRound >= 5) {
-      nextBtn.textContent = "Results →";
+      nextBtn.textContent = "Résultats →";
       nextBtn.onclick = endGame;
     }
     nextRow.classList.remove("hidden");
@@ -779,7 +780,7 @@ function endGame() {
   drawSummary();
 
   const banner = document.getElementById("celebration-banner");
-  document.getElementById("celebration-text").textContent = `🎉 Total: ${totalKm} km`;
+  document.getElementById("celebration-text").textContent = `🎉 Total : ${totalKm} km`;
   banner.classList.remove("hidden");
   banner.classList.add("banner-in");
   setTimeout(() => {
@@ -800,11 +801,11 @@ function shareEmoji(km) {
 
 function shareScore() {
   const lines = roundResults.map(({ km }) => `${shareEmoji(km)} ${km} km`).join("\n");
-  const text = `GeoSpot #${challengeNumber()} — ${displayStr}\nhttps://capitainecookie.github.io/geospot/\n\n${lines}\n\nTotal: ${totalKm} km`;
+  const text = `GeoSpot #${challengeNumber()} — ${displayStr}\nhttps://capitainecookie.github.io/geospot/\n\n${lines}\n\nTotal : ${totalKm} km`;
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.getElementById("share-btn");
-    btn.textContent = "Copied!";
-    setTimeout(() => { btn.textContent = "Share your score"; }, 2000);
+    btn.textContent = "Copié !";
+    setTimeout(() => { btn.textContent = "Partager"; }, 2000);
   });
 }
 

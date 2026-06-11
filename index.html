@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
-  <title>GeoSpot — Daily Challenge</title>
+  <title>GeoSpot — Défi du jour</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 
 <header>
   <h1>GeoSpot</h1>
-  <span class="subtitle">Daily challenge <span id="header-num"></span> — <span id="date-display"></span></span>
+  <span class="subtitle">Défi du jour <span id="header-num"></span> — <span id="date-display"></span></span>
 </header>
 
 <div class="main">
@@ -31,10 +31,10 @@
           <!-- Blue mystery dot on the right -->
           <circle cx="72" cy="20" r="4" fill="none" stroke="#3b82f6" stroke-width="3"/>
         </svg>
-        <p>Get as close as you can to the target.</p>
+        <p>Trouve une ville le plus proche possible de la cible.</p>
 
       </div>
-      <button onclick="closeIntro()">Play</button>
+      <button onclick="closeIntro()">Jouer</button>
     </div>
   </div>
 
@@ -47,14 +47,14 @@
   <div class="guess-overlay hidden">
     <div class="overlay-header">
       <span>Round <strong id="round-current">1</strong>/5</span>
-      <span>Total: <strong id="total-score">0 km</strong></span>
+      <span>Total : <strong id="total-score">0 km</strong></span>
     </div>
     <ul id="guess-list"></ul>
     <div id="next-row" class="share-row hidden">
-      <button id="next-btn" onclick="advanceRound()">Next round →</button>
+      <button id="next-btn" onclick="advanceRound()">Suivant →</button>
     </div>
     <div id="share-row" class="share-row hidden">
-      <button id="share-btn" onclick="shareScore()">Share your score</button>
+      <button id="share-btn" onclick="shareScore()">Partager</button>
     </div>
   </div>
 
@@ -64,7 +64,7 @@
     <div class="msg" id="msg"></div>
     <ul id="suggestions"></ul>
     <div class="search-row">
-      <input id="city-input" type="text" placeholder="How close can you get?"
+      <input id="city-input" type="text" placeholder="À quelle distance êtes-vous ?"
              autocomplete="off" spellcheck="false" />
       <button id="submit-btn" aria-label="Submit">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
