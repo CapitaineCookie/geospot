@@ -640,6 +640,7 @@ function makeSvgLabel(name, p, color, size, above = true) {
     "paint-order": "stroke",
     stroke: "#111827",
     "stroke-width": "2",
+    style: "user-select:none;-webkit-user-select:none",
   });
   lbl.textContent = name;
   return lbl;
