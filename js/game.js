@@ -55,7 +55,7 @@ const CITIES = CITIES_DATA.map(c => [
 // Pick 5 distinct cities for today, seeded by date
 function pickTodaysCities() {
   const today = todayString();
-  const rng = makePrng(seedFromDate("gespot-v2:" + today));
+  const rng = makePrng(seedFromDate("geospot:" + today));
   const candidates = CITIES.filter(c => c);
   // Fisher-Yates shuffle using the seeded PRNG
   const shuffled = [...candidates];
@@ -191,9 +191,19 @@ function normalizeNoArticle(str) {
 
 // ---- Color by distance ----
 function guessColor(km) {
-  if (km < 50)  return "#f59e0b";
-  if (km < 150) return "#94a3b8";
-  return "#e05a2b";
+  if (km < 50)  return "#e8d06a";
+  if (km < 150) return "#c8c8c8";
+  return "#d4855a";
+}
+function guessStroke(km) {
+  if (km < 50)  return "#a89030";
+  if (km < 150) return "#7a7a7a";
+  return "#9a5030";
+}
+function lineColor(km) {
+  if (km < 50)  return "#a89030";
+  if (km < 150) return "#7a7a7a";
+  return "#d4855a";
 }
 
 // ---- Persistence ----
@@ -202,18 +212,19 @@ const [_y, _m, _d] = dateStr.split("-");
 const displayStr = `${_d}/${_m}/${_y}`;
 
 function saveState() {
-  localStorage.setItem("gespot_state", JSON.stringify({
+  localStorage.setItem("geospot_state", JSON.stringify({
     date: dateStr,
     round: currentRound,
     totalKm,
     results: roundResults.map(r => ({ targetCode: r.target[3], guessCode: r.guess[3], km: r.km })),
     introDismissed,
+    awaitingNextRound,
   }));
 }
 
 function loadState() {
   try {
-    const raw = localStorage.getItem("gespot_state");
+    const raw = localStorage.getItem("geospot_state");
     if (!raw) return null;
     const data = JSON.parse(raw);
     return data.date === dateStr ? data : null;
@@ -310,6 +321,13 @@ function restoreState(saved) {
     document.getElementById("submit-btn").disabled = true;
     document.getElementById("share-row").classList.remove("hidden");
     document.getElementById("share-row").classList.add("fade-in");
+  } else if (saved.awaitingNextRound) {
+    awaitingNextRound = true;
+    document.getElementById("round-current").textContent = currentRound;
+    document.getElementById("city-input").disabled = true;
+    document.getElementById("submit-btn").disabled = true;
+    document.getElementById("next-row").classList.remove("hidden");
+    document.getElementById("next-row").classList.add("fade-in");
   } else {
     document.getElementById("round-current").textContent = currentRound + 1;
     document.querySelector(".search-wrapper").classList.add("fade-in");
@@ -361,6 +379,9 @@ function redrawAll() {
 }
 
 // ---- Nearest-dot hover logic ----
+// Maps hover-dot <g> elements to their detached label elements
+const dotLabelMap = new WeakMap();
+
 function onSvgMouseMove(e) {
   const rect = svg.getBoundingClientRect();
   const mx = e.clientX - rect.left;
@@ -382,16 +403,20 @@ function onSvgMouseMove(e) {
   }
 
   for (const g of dots) {
-    const lbl = g.querySelector(".hover-label");
-    const show = g === closest && closestDist < 40;
-    if (lbl) {
-      lbl.classList.toggle("visible", show);
-      if (show && g.parentNode) g.parentNode.appendChild(g);
+    const show = g === closest && closestDist < 20;
+    g.classList.toggle("hovered", show);
+    const lbl = dotLabelMap.get(g);
+    if (!lbl) continue;
+    lbl.classList.toggle("visible", show);
+    if (show) {
+      // Move hovered label to end of its parent so it renders above sibling labels
+      lbl.parentNode && lbl.parentNode.appendChild(lbl);
     }
   }
 }
 
 // ---- Hover label helper ----
+// Returns { g, dot, lbl } — lbl is NOT appended to g; caller must place it in a label layer.
 function makeHoverDot(p, fill, stroke, r, label, labelColor, above, strokeWidth = 1.5, alwaysShow = false) {
   const g = svgEl("g");
   g.classList.add("hover-dot");
@@ -401,11 +426,23 @@ function makeHoverDot(p, fill, stroke, r, label, labelColor, above, strokeWidth 
   g.appendChild(svgEl("circle", { cx: p.x, cy: p.y, r: 14, fill: "transparent", stroke: "none" }));
   const lbl = makeSvgLabel(label, p, labelColor, 12, above);
   if (!alwaysShow) lbl.classList.add("hover-label");
-  g.appendChild(lbl);
-  return { g, dot };
+  dotLabelMap.set(g, lbl);
+  return { g, dot, lbl };
 }
 
-// ---- Target dot (anonymous, hollow, no label) ----
+function animPop(el) {
+  el.classList.add("dot-anim");
+  el.addEventListener("animationend", () => el.classList.remove("dot-anim"), { once: true });
+}
+
+// ---- Halo circle (always rendered in the halo layer, below everything else) ----
+function makeHalo(p) {
+  const halo = svgEl("circle", { cx: p.x, cy: p.y, r: TARGET_R + 5, fill: "none", stroke: "#7ab3e8", "stroke-width": "3", opacity: "0.3" });
+  halo.classList.add("target-glow-ring");
+  return halo;
+}
+
+// ---- Target dot (anonymous, amber glow) ----
 function showTargetDot(city, animate = true) {
   const old = document.getElementById("target-layer");
   if (old) old.remove();
@@ -413,18 +450,26 @@ function showTargetDot(city, animate = true) {
   const g = svgEl("g");
   g.id = "target-layer";
   const p = project(city[0], city[1]);
-  const dot = svgEl("circle", { cx: p.x, cy: p.y, r: TARGET_R, fill: "none", stroke: "#3b82f6", "stroke-width": "3" });
-  if (animate && !targetDotShown) {
-    dot.classList.add("dot-anim");
-    targetDotShown = true;
-  }
-  g.appendChild(dot);
+
+  const haloLayer = svgEl("g");
+  haloLayer.appendChild(makeHalo(p));
+  g.appendChild(haloLayer);
+
+  const dotG = svgEl("g");
+  dotG.classList.add("hover-dot");
+  const dot = svgEl("circle", { cx: p.x, cy: p.y, r: TARGET_R, fill: "#7ab3e8", stroke: "#3a6a9a", "stroke-width": "1.5" });
+  dotG.appendChild(dot);
+  dotG.appendChild(svgEl("circle", { cx: p.x, cy: p.y, r: 14, fill: "transparent", stroke: "none" }));
+  if (animate && !targetDotShown) animPop(dot);
+  g.appendChild(dotG);
+
+  if (animate) targetDotShown = true;
   svg.appendChild(g);
 }
 
 // ---- Draw a revealed round's elements ----
 const ANIM_MS = 1200; // must match draw-line CSS animation duration
-const TARGET_R = 4;   // radius of the hollow target dot
+const TARGET_R = 5;   // radius of the hollow target dot
 
 function drawRevealedRound(target, guess, km, animate) {
   const color = guessColor(km);
@@ -433,6 +478,16 @@ function drawRevealedRound(target, guess, km, animate) {
 
   const g = svgEl("g");
   g.classList.add("round-layer");
+
+  // Sub-layers in paint order: halos → lines → dots → labels
+  const haloLayer = svgEl("g");
+  const lineLayer = svgEl("g");
+  const dotLayer  = svgEl("g");
+  const lblLayer  = svgEl("g");
+  g.appendChild(haloLayer);
+  g.appendChild(lineLayer);
+  g.appendChild(dotLayer);
+  g.appendChild(lblLayer);
 
   const dx = pG.x - pT.x, dy = pG.y - pT.y;
   const len = Math.sqrt(dx * dx + dy * dy);
@@ -445,12 +500,15 @@ function drawRevealedRound(target, guess, km, animate) {
 
     if (exact) {
       // No line, instant reveal
-      const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", true, 3);
+      const { g: tHg, lbl: tLbl } = makeHoverDot(pT, "#7ab3e8", "#3a6a9a", TARGET_R, target[2], "#7ab3e8", true, 1.5);
+      haloLayer.appendChild(makeHalo(pT));
+      dotLayer.appendChild(tHg);
+      lblLayer.appendChild(tLbl);
       svg.appendChild(g);
-      g.appendChild(tHg);
-      const { g: gHg, dot: gDot } = makeHoverDot(pG, color, color, 5, guess[2], color, true, 1.5, true);
-      gDot.classList.add("dot-anim");
-      g.appendChild(gHg);
+      const { g: gHg, dot: gDot, lbl: gLbl } = makeHoverDot(pG, color, guessStroke(km), 6, guess[2], color, true, 1.5, true);
+      animPop(gDot);
+      dotLayer.appendChild(gHg);
+      lblLayer.appendChild(gLbl);
       flashKm(km, color);
       return g;
     }
@@ -459,43 +517,50 @@ function drawRevealedRound(target, guess, km, animate) {
     const lineLen = len - TARGET_R;
     const line = svgEl("line", {
       x1: lineX1, y1: lineY1, x2: pG.x, y2: pG.y,
-      stroke: "#f59e0b", "stroke-width": "2", "stroke-dasharray": `${lineLen}`, opacity: "0.9",
+      stroke: "#a89030", "stroke-width": "1.5", "stroke-dasharray": `${lineLen}`, opacity: "1",
     });
     line.style.setProperty("--line-len", lineLen);
     line.classList.add("line-draw");
-    g.appendChild(line);
-    const { g: tHgAnim } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", true, 3);
-    g.appendChild(tHgAnim);
+    lineLayer.appendChild(line);
+    const { g: tHgAnim, lbl: tLblAnim } = makeHoverDot(pT, "#7ab3e8", "#3a6a9a", TARGET_R, target[2], "#7ab3e8", true, 1.5);
+    haloLayer.appendChild(makeHalo(pT));
+    dotLayer.appendChild(tHgAnim);
+    lblLayer.appendChild(tLblAnim);
     svg.appendChild(g);
 
-    if (km > 50)  setTimeout(() => line.setAttribute("stroke", "#94a3b8"), ANIM_MS * (50  / km));
-    if (km > 150) setTimeout(() => line.setAttribute("stroke", "#e05a2b"), ANIM_MS * (150 / km));
+    if (km > 50)  setTimeout(() => line.setAttribute("stroke", "#7a7a7a"), ANIM_MS * (50  / km));
+    if (km > 150) setTimeout(() => line.setAttribute("stroke", "#d4855a"), ANIM_MS * (150 / km));
 
     setTimeout(() => {
-      line.setAttribute("stroke", color);
+      line.setAttribute("stroke", lineColor(km));
       line.setAttribute("stroke-dasharray", "4 3");
       line.style.removeProperty("--line-len");
 
-        const { g: gHg, dot: gDot } = makeHoverDot(pG, color, color, 5, guess[2], color, true, 1.5, true);
-      gDot.classList.add("dot-anim");
-      g.appendChild(gHg);
-
-      drawNearbyLandmarks(g, [target[0], target[1]], km, [[target[0], target[1]], [guess[0], guess[1]]]);
+      const { g: gHg, dot: gDot, lbl: gLbl } = makeHoverDot(pG, color, guessStroke(km), 6, guess[2], color, true, 1.5, true);
+      animPop(gDot);
+      dotLayer.appendChild(gHg);
+      lblLayer.appendChild(gLbl);
       flashKm(km, color);
+
+      drawNearbyLandmarks(haloLayer, lineLayer, dotLayer, lblLayer, [target[0], target[1]], km, [[target[0], target[1]], [guess[0], guess[1]]], true);
       // zoomToPoints([pT, pG], 1800);
     }, 1300);
 
     return g;
 
   } else {
-    g.appendChild(svgEl("line", {
+    lineLayer.appendChild(svgEl("line", {
       x1: lineX1, y1: lineY1, x2: pG.x, y2: pG.y,
-      stroke: color, "stroke-width": "2", "stroke-dasharray": "4 3", opacity: "0.9",
+      stroke: lineColor(km), "stroke-width": "1.5", "stroke-dasharray": "4 3", opacity: "1",
     }));
-    const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", true, 3);
-    g.appendChild(tHg);
-    const { g: gHg } = makeHoverDot(pG, color, color, 5, guess[2], color, true, 1.5, true);
-    g.appendChild(gHg);
+    const { g: tHgStatic, lbl: tLblStatic } = makeHoverDot(pT, "#7ab3e8", "#3a6a9a", TARGET_R, target[2], "#7ab3e8", true, 1.5);
+    haloLayer.appendChild(makeHalo(pT));
+    dotLayer.appendChild(tHgStatic);
+    lblLayer.appendChild(tLblStatic);
+    const { g: gHg, lbl: gLbl } = makeHoverDot(pG, color, guessStroke(km), 6, guess[2], color, true, 1.5, true);
+    dotLayer.appendChild(gHg);
+    lblLayer.appendChild(gLbl);
+    drawNearbyLandmarks(haloLayer, lineLayer, dotLayer, lblLayer, [target[0], target[1]], km, [[target[0], target[1]], [guess[0], guess[1]]]);
     svg.appendChild(g);
     return g;
   }
@@ -510,7 +575,7 @@ function flashKm(km, color) {
   el.classList.add("playing");
 }
 
-function drawNearbyLandmarks(g, targetLatLon, guessKm, excludeLatLons = []) {
+function drawNearbyLandmarks(haloLayer, lineLayer, dotLayer, lblLayer, targetLatLon, guessKm, excludeLatLons = [], animate = false) {
   const nearby = LANDMARKS
     .filter(([lat, lon]) =>
       haversineKm([lat, lon], targetLatLon) < guessKm &&
@@ -520,26 +585,61 @@ function drawNearbyLandmarks(g, targetLatLon, guessKm, excludeLatLons = []) {
       haversineKm([latA, lonA], targetLatLon) - haversineKm([latB, lonB], targetLatLon)
     )
     .slice(0, 2);
-  for (const [lat, lon, name] of nearby) {
+
+  const pT = project(targetLatLon[0], targetLatLon[1]);
+
+  nearby.forEach(([lat, lon, name], i) => {
     const p = project(lat, lon);
-    const color = guessColor(haversineKm([lat, lon], targetLatLon));
-    const { g: hg } = makeHoverDot(p, color, color, 4, name, color, true);
-    hg.style.opacity = "0.8";
-    g.appendChild(hg);
-  }
+    const nearbyKm = haversineKm([lat, lon], targetLatLon);
+    const color = guessColor(nearbyKm);
+
+    const dx = p.x - pT.x, dy = p.y - pT.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / len, uy = dy / len;
+    const lineX1 = pT.x + ux * TARGET_R, lineY1 = pT.y + uy * TARGET_R;
+
+    const line = svgEl("line", {
+      x1: lineX1, y1: lineY1, x2: p.x, y2: p.y,
+      stroke: lineColor(nearbyKm), "stroke-width": "1.5", "stroke-dasharray": `${len}`, opacity: "1",
+    });
+
+    const { g: hg, dot, lbl } = makeHoverDot(p, color, guessStroke(nearbyKm), 5, name, color, true, 1.5);
+
+    if (animate) {
+      const delay = 120 * i;
+      line.style.setProperty("--line-len", len);
+      setTimeout(() => {
+        lineLayer.appendChild(line);
+        line.classList.add("line-draw");
+        setTimeout(() => {
+          line.classList.remove("line-draw");
+          line.setAttribute("stroke-dasharray", "4 3");
+          line.style.removeProperty("--line-len");
+          dotLayer.appendChild(hg);
+          lblLayer.appendChild(lbl);
+          animPop(dot);
+        }, 400);
+      }, delay);
+    } else {
+      line.setAttribute("stroke-dasharray", "4 3");
+      lineLayer.appendChild(line);
+      dotLayer.appendChild(hg);
+      lblLayer.appendChild(lbl);
+    }
+  });
 }
 
-function makeSvgLabel(name, p, color, size, above = false) {
+function makeSvgLabel(name, p, color, size, above = true) {
   const lbl = svgEl("text", {
-    x: p.x, y: above ? p.y - 10 : p.y + 18,
+    x: p.x, y: above ? p.y - 11 : p.y + 21,
     "text-anchor": "middle",
     fill: color,
-    "font-size": "12",
+    "font-size": "15",
     "font-family": "Segoe UI, system-ui, sans-serif",
     "font-weight": "700",
     "paint-order": "stroke",
     stroke: "#111827",
-    "stroke-width": "3",
+    "stroke-width": "2",
   });
   lbl.textContent = name;
   return lbl;
@@ -656,7 +756,7 @@ function submitGuess() {
     ? candidates.reduce((best, c) => haversineKm(c, target) < haversineKm(best, target) ? c : best)
     : candidates[0];
 
-  if (!guess) { showMessage("Ville introuvable.", "error"); return; }
+  if (!guess) return;
 
   input.value = "";
   hideSuggestions();
@@ -745,6 +845,15 @@ function drawSummary() {
   const g = svgEl("g");
   g.id = "summary-layer";
 
+  const haloLayer = svgEl("g");
+  const lineLayer = svgEl("g");
+  const dotLayer  = svgEl("g");
+  const lblLayer  = svgEl("g");
+  g.appendChild(haloLayer);
+  g.appendChild(lineLayer);
+  g.appendChild(dotLayer);
+  g.appendChild(lblLayer);
+
   for (const { target, guess, km } of roundResults) {
     const color = guessColor(km);
     const pT = project(target[0], target[1]);
@@ -755,15 +864,18 @@ function drawSummary() {
       const sdx = pG.x - pT.x, sdy = pG.y - pT.y;
       const slen = Math.sqrt(sdx * sdx + sdy * sdy);
       const sux = sdx / slen, suy = sdy / slen;
-      g.appendChild(svgEl("line", {
+      lineLayer.appendChild(svgEl("line", {
         x1: pT.x + sux * TARGET_R, y1: pT.y + suy * TARGET_R, x2: pG.x, y2: pG.y,
-        stroke: color, "stroke-width": "2", "stroke-dasharray": "4 3", opacity: "0.9",
+        stroke: lineColor(km), "stroke-width": "1.5", "stroke-dasharray": "4 3", opacity: "1",
       }));
     }
-    const { g: tHg } = makeHoverDot(pT, "none", "#3b82f6", TARGET_R, target[2], "#3b82f6", true, 3);
-    g.appendChild(tHg);
-    const { g: gHg } = makeHoverDot(pG, color, color, 5, guess[2], color, true, 1.5, true);
-    g.appendChild(gHg);
+    haloLayer.appendChild(makeHalo(pT));
+    const { g: tHg, lbl: tLbl } = makeHoverDot(pT, "#7ab3e8", "#3a6a9a", TARGET_R, target[2], "#7ab3e8", true, 1.5);
+    dotLayer.appendChild(tHg);
+    lblLayer.appendChild(tLbl);
+    const { g: gHg, lbl: gLbl } = makeHoverDot(pG, color, guessStroke(km), 6, guess[2], color, true, 1.5, true);
+    dotLayer.appendChild(gHg);
+    lblLayer.appendChild(gLbl);
   }
 
   svg.appendChild(g);
