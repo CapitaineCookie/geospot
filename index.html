@@ -51,9 +51,6 @@
       <span>Total : <strong id="total-score">0 km</strong></span>
     </div>
     <ul id="guess-list"></ul>
-    <div id="next-row" class="share-row hidden">
-      <button id="next-btn" onclick="advanceRound()">Suivant →</button>
-    </div>
     <div id="share-row" class="share-row hidden">
       <button id="share-btn" onclick="shareScore()">Partager</button>
     </div>
@@ -73,6 +70,7 @@
           <path d="M5 12h14M13 6l6 6-6 6"/>
         </svg>
       </button>
+      <button id="next-inline-btn" class="hidden" onclick="advanceRound()">Suivant →</button>
     </div>
   </div>
 

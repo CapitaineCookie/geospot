@@ -219,6 +219,7 @@ function saveState() {
     results: roundResults.map(r => ({ targetCode: r.target[3], guessCode: r.guess[3], km: r.km })),
     introDismissed,
     awaitingNextRound,
+    resultsSeen,
   }));
 }
 
@@ -239,6 +240,7 @@ let totalKm = 0;
 const roundResults = [];    // { target, guess, km }
 let activeIndex = -1;
 let awaitingNextRound = false;
+let resultsSeen = false;
 let currentRoundLayer = null;
 let targetDotShown = false;
 let introDismissed = false;
@@ -296,6 +298,7 @@ function restoreState(saved) {
   introDismissed = true;
   currentRound = saved.round;
   totalKm = saved.totalKm;
+  resultsSeen = saved.resultsSeen || false;
 
   for (const r of saved.results) {
     const target = CITIES.find(c => c[3] === r.targetCode);
@@ -315,19 +318,22 @@ function restoreState(saved) {
 
   document.querySelector(".search-wrapper").classList.add("fade-in");
 
-  if (currentRound >= 5) {
+  if (currentRound >= 5 && resultsSeen) {
     document.getElementById("round-current").textContent = 5;
     document.getElementById("city-input").disabled = true;
     document.getElementById("submit-btn").disabled = true;
+    document.querySelector(".search-wrapper").style.visibility = "hidden";
     document.getElementById("share-row").classList.remove("hidden");
     document.getElementById("share-row").classList.add("fade-in");
-  } else if (saved.awaitingNextRound) {
+  } else if (saved.awaitingNextRound || currentRound >= 5) {
     awaitingNextRound = true;
     document.getElementById("round-current").textContent = currentRound;
-    document.getElementById("city-input").disabled = true;
-    document.getElementById("submit-btn").disabled = true;
-    document.getElementById("next-row").classList.remove("hidden");
-    document.getElementById("next-row").classList.add("fade-in");
+    document.getElementById("city-input").style.display = "none";
+    document.getElementById("submit-btn").style.display = "none";
+    const inlineBtn = document.getElementById("next-inline-btn");
+    inlineBtn.textContent = currentRound >= 5 ? "Résultats →" : "Suivant →";
+    inlineBtn.onclick = currentRound >= 5 ? endGame : advanceRound;
+    inlineBtn.classList.remove("hidden");
   } else {
     document.getElementById("round-current").textContent = currentRound + 1;
     document.querySelector(".search-wrapper").classList.add("fade-in");
@@ -367,7 +373,7 @@ function redrawFrance() {
 function redrawAll() {
   redrawFrance();
 
-  if (currentRound >= 5 && roundResults.length === 5) {
+  if (resultsSeen && roundResults.length === 5) {
     drawSummary();
   } else if (awaitingNextRound && roundResults.length > 0) {
     // Redraw the current round's reveal (no animation)
@@ -791,14 +797,17 @@ function submitGuess() {
   saveState();
 
   setTimeout(() => {
-    const nextRow = document.getElementById("next-row");
-    const nextBtn = document.getElementById("next-btn");
+    const inlineBtn = document.getElementById("next-inline-btn");
     if (currentRound >= 5) {
-      nextBtn.textContent = "Résultats →";
-      nextBtn.onclick = endGame;
+      inlineBtn.textContent = "Résultats →";
+      inlineBtn.onclick = endGame;
+    } else {
+      inlineBtn.textContent = "Suivant →";
+      inlineBtn.onclick = advanceRound;
     }
-    nextRow.classList.remove("hidden");
-    nextRow.classList.add("fade-in");
+    document.getElementById("city-input").style.display = "none";
+    document.getElementById("submit-btn").style.display = "none";
+    inlineBtn.classList.remove("hidden");
   }, nextDelay);
 }
 
@@ -814,7 +823,9 @@ function closeIntro() {
 }
 
 function advanceRound() {
-  document.getElementById("next-row").classList.add("hidden");
+  document.getElementById("next-inline-btn").classList.add("hidden");
+  document.getElementById("city-input").style.display = "";
+  document.getElementById("submit-btn").style.display = "";
 
   if (currentRoundLayer) {
     currentRoundLayer.remove();
@@ -823,6 +834,7 @@ function advanceRound() {
 
   document.getElementById("round-current").textContent = currentRound + 1;
   awaitingNextRound = false;
+  saveState();
   startRound();
 }
 
@@ -884,7 +896,9 @@ function drawSummary() {
 
 // ---- End game ----
 function endGame() {
-  document.getElementById("next-row").classList.add("hidden");
+  document.querySelector(".search-wrapper").style.visibility = "hidden";
+  resultsSeen = true;
+  saveState();
 
   if (currentRoundLayer) {
     currentRoundLayer.remove();
