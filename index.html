@@ -1,0 +1,1212 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeoSpot — Défi du jour</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 10px 16px;
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.08em; color: #e94560; }
+    header .subtitle { font-size: 0.78rem; color: #888; letter-spacing: 0.04em; }
+
+    /* ── Map ── */
+    #map { flex: 1; width: 100%; position: relative; background: #1a1a2e; }
+    .leaflet-container { background: #1a1a2e !important; }
+    #map-cover {
+      position: absolute; inset: 0; background: #1a1a2e; z-index: 1000; pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+    #map-cover.hidden { opacity: 0; pointer-events: none; }
+    .leaflet-interactive { transition: r 0.15s ease, d 0.15s ease; }
+
+    /* ── Bottom bar ── */
+    #km-display {
+      position: absolute;
+      bottom: 82px;
+      left: 50%;
+      transform: translateX(-50%) scale(0.6);
+      z-index: 900;
+      font-size: 3.2rem;
+      font-weight: 800;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease;
+    }
+    #km-display.visible {
+      opacity: 1;
+      transform: translateX(-50%) scale(1);
+    }
+    #km-display.hide {
+      opacity: 0;
+      transform: translateX(-50%) scale(0.8);
+      transition: transform 0.25s ease, opacity 0.25s ease;
+    }
+
+    #bottom-bar {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(300px, calc(100vw - 32px));
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #search-wrapper { position: relative; flex: 1; min-width: 0; }
+
+    #search-input {
+      width: 100%;
+      padding: 12px 18px;
+      border-radius: 30px;
+      border: 1px solid #0f3460;
+      background: rgba(22, 33, 62, 0.92);
+      color: #eee;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+    #search-input:focus { border-color: #e94560; }
+    #search-input::placeholder { color: #888; }
+
+    #submit-btn {
+      display: none;
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: #e94560;
+      color: #fff;
+      font-size: 1.1rem;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: background 0.2s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #submit-btn:hover { background: #c73652; }
+    #submit-btn:active { transform: scale(0.93); }
+
+    #suggestions {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0; right: 0;
+      background: rgba(22, 33, 62, 0.96);
+      border: 1px solid #0f3460;
+      border-radius: 16px;
+      overflow: hidden;
+      z-index: 9999;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+    }
+    .suggestion-item {
+      padding: 10px 18px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      border-bottom: 1px solid #0f3460;
+      transition: background 0.15s;
+    }
+    .suggestion-item:last-child { border-bottom: none; }
+    .suggestion-item:hover, .suggestion-item.active { background: #0f3460; color: #e94560; }
+    .suggestion-item .name { font-weight: 600; }
+
+    /* Suivant / Résultat button */
+    #action-btn {
+      flex: 1;
+      padding: 13px 18px;
+      border-radius: 30px;
+      border: none;
+      background: #e94560;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+      transition: background 0.2s, transform 0.1s;
+      display: none;
+    }
+    #action-btn:hover { background: #c73652; }
+    #action-btn:active { transform: scale(0.97); }
+
+    /* Round indicator in header */
+    #round-indicator {
+      display: none;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    #round-indicator.visible { display: flex; }
+    .round-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #0f3460;
+      border: 1.5px solid #444;
+      transition: background 0.3s;
+    }
+    .round-dot.done { background: #e94560; border-color: #e94560; }
+    .round-dot.current { background: #fff; border-color: #fff; }
+
+    /* ── Intro overlay ── */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 20, 0.88);
+      backdrop-filter: blur(6px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #overlay.hidden { display: none; }
+
+    .overlay-card {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 20px;
+      padding: 32px 28px;
+      max-width: 360px;
+      width: calc(100vw - 48px);
+      text-align: center;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    }
+    .overlay-card h2 { font-size: 1.8rem; color: #e94560; margin-bottom: 4px; }
+    .overlay-card .subtitle { font-size: 0.95rem; color: #eee; font-weight: 600; margin-bottom: 2px; }
+    .overlay-card .date { font-size: 0.82rem; color: #888; margin-bottom: 0; }
+    .overlay-card p { font-size: 0.97rem; color: #ccc; line-height: 1.5; margin-bottom: 24px; }
+    .overlay-card button {
+      padding: 12px 36px;
+      min-width: 130px;
+      height: 46px;
+      border-radius: 30px;
+      border: none;
+      background: #e94560;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .overlay-card button:hover { background: #c73652; }
+    .overlay-card button:disabled { cursor: default; }
+    #map-loader {
+      animation: spin 1s linear infinite;
+      display: block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Partager button */
+    #share-btn {
+      width: 100%;
+      margin-top: 10px;
+      padding: 8px 0;
+      border-radius: 20px;
+      border: none;
+      background: #e94560;
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: none;
+    }
+    #share-btn.visible { display: block; }
+    #share-btn:hover { background: #c73652; }
+    #share-btn.copied { background: #4caf7d; }
+
+
+    /* Score panel */
+    #score-panel {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      width: 180px;
+      background: rgba(22, 33, 62, 0.88);
+      border: 1px solid #0f3460;
+      border-radius: 14px;
+      padding: 10px 12px;
+      z-index: 800;
+      backdrop-filter: blur(6px);
+      display: none;
+    }
+    #score-panel.visible { display: block; }
+    #score-panel .panel-title {
+      font-size: 0.72rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #score-panel .panel-title::after {
+      content: '▲';
+      font-size: 0.6rem;
+      color: #555;
+      transition: transform 0.2s;
+    }
+    #score-panel.collapsed .panel-title::after {
+      transform: rotate(180deg);
+    }
+    #score-panel.collapsed #score-rows {
+      display: none;
+    }
+    .score-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px solid #0f3460;
+      font-size: 0.82rem;
+    }
+    .score-row:last-child { border-bottom: none; }
+    .score-row .sr-city { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
+    .score-row .sr-dist { font-weight: 700; font-size: 0.78rem; flex-shrink: 0; margin-left: 6px; }
+
+    .dot-label {
+      position: absolute;
+      transform: translateX(-50%);
+      bottom: -8px;
+      left: 0;
+      white-space: nowrap;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7);
+      pointer-events: none;
+      letter-spacing: 0.02em;
+    }
+    #score-total {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid #0f3460;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      color: #888;
+    }
+    #score-total strong { color: #eee; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>GeoSpot</h1>
+  <div class="subtitle" id="challenge-label"></div>
+  <div id="round-indicator"></div>
+</header>
+
+<div id="map"><div id="map-cover"></div>
+  <!-- Score panel -->
+  <div id="score-panel">
+    <div class="panel-title" id="panel-round-label">Manche 1 / 5</div>
+    <div id="score-rows"></div>
+    <div id="score-total">Total <strong id="score-total-val">0 km</strong></div>
+    <button id="share-btn">Partager</button>
+  </div>
+</div>
+
+<!-- KM result display -->
+<div id="km-display"></div>
+
+<!-- Bottom bar: search or action button -->
+<div id="bottom-bar">
+  <div id="search-wrapper">
+    <input id="search-input" type="text" placeholder="Trouve une ville proche…" autocomplete="off" spellcheck="false" />
+    <div id="suggestions" style="display:none"></div>
+  </div>
+  <button id="submit-btn" title="Valider"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+  <button id="action-btn"></button>
+</div>
+
+<!-- Intro overlay -->
+<div id="overlay">
+  <div class="overlay-card" id="intro-card">
+    <h2>GeoSpot</h2>
+    <div class="subtitle" id="overlay-title"></div>
+    <div class="date" id="overlay-date"></div>
+    <svg viewBox="0 0 200 80" width="200" height="80" style="margin:4px auto 8px;display:block">
+      <!-- dashed line guess → target -->
+      <line x1="68" y1="50" x2="132" y2="50" stroke="white" stroke-width="2" stroke-dasharray="4 7" stroke-linecap="round" stroke-opacity="0.75"/>
+      <!-- guess dot (gold) -->
+      <circle cx="68" cy="50" r="6" fill="#f5a623" stroke="#f9c87a" stroke-width="2"/>
+      <!-- Bordeaux label above guess dot -->
+      <text x="68" y="37" text-anchor="middle" fill="#f5a623" font-size="11" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,sans-serif">Bordeaux</text>
+      <!-- target dot (blue) -->
+      <circle cx="132" cy="50" r="6" fill="#70a1ff" stroke="#a8c8ff" stroke-width="2"/>
+    </svg>
+    <p>Trouve la ville la plus proche possible de la cible.</p>
+    <button id="play-btn" disabled>
+      <svg id="map-loader" width="22" height="22" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="11" stroke="#ffffff44" stroke-width="3"/>
+        <path d="M14 3 A11 11 0 0 1 25 14" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  // ── Day number & label — runs immediately, before any heavy scripts ───────
+  const EPOCH = new Date('2026-06-22T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dayNumber = Math.floor((today - EPOCH) / 86400000) + 1;
+  const dateStr = today.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
+  document.getElementById('challenge-label').textContent = `Défi du jour #${dayNumber} — ${dateStr}`;
+  document.getElementById('overlay-title').textContent = `Défi du jour #${dayNumber}`;
+  document.getElementById('overlay-date').textContent = dateStr;
+
+  // Hide overlay immediately if there's a save for today, so it never flashes
+  try {
+    const raw = localStorage.getItem('geospot_save');
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved.day === dayNumber) {
+        document.getElementById('overlay').classList.add('hidden');
+      }
+    }
+  } catch (e) {}
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="borders.js"></script>
+<script src="rivers.js"></script>
+<script src="cities.js"></script>
+<script src="landmarks.js"></script>
+<script>
+  // ── Map ───────────────────────────────────────────────────────────────────
+  const map = L.map('map', {
+    center: [46.6, 2.5], zoom: 6,
+    zoomSnap: 0,
+    zoomControl: false, dragging: false,
+    scrollWheelZoom: false, doubleClickZoom: false,
+    touchZoom: false, boxZoom: false, keyboard: false,
+  });
+
+  // The two latitudes that must always be fully visible, regardless of screen size
+  const LAT_SOUTH = 41.2;
+  const LAT_NORTH = 51.2;
+  const LNG_WEST  = -5.2;
+  const LNG_EAST  =  9.6;
+  const LNG_CENTER = (LNG_WEST + LNG_EAST) / 2;
+  const PAD_TOP = 30;
+  const PAD_BOTTOM = 100;
+  const PAD_SIDES = 16;
+
+  const isTouchDevice = navigator.maxTouchPoints > 0;
+  // Snapshot full screen height once so keyboard open/close doesn't affect it on mobile
+  const SCREEN_H = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+  function fitLatitudes() {
+    const mapEl = document.getElementById('map');
+    const availH = mapEl.clientHeight - PAD_TOP - PAD_BOTTOM;
+    const availW = mapEl.clientWidth - PAD_SIDES * 2;
+    const centerLat = (LAT_NORTH + LAT_SOUTH) / 2;
+
+    // Binary search for zoom constrained by height
+    let lo = 0, hi = 18;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      const yS = map.project([LAT_SOUTH, 0], mid).y;
+      const yN = map.project([LAT_NORTH, 0], mid).y;
+      if (yS - yN < availH) lo = mid; else hi = mid;
+    }
+    const zoomH = lo;
+
+    // Binary search for zoom constrained by width
+    lo = 0; hi = 18;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      const xW = map.project([0, LNG_WEST],  mid).x;
+      const xE = map.project([0, LNG_EAST],  mid).x;
+      if (xE - xW < availW) lo = mid; else hi = mid;
+    }
+    const zoomW = lo;
+
+    // Use whichever axis is tighter
+    map.setView([centerLat, LNG_CENTER], Math.min(zoomH, zoomW), { animate: false });
+  }
+
+  const fitFrance = fitLatitudes;
+
+  let suppressResize = false;
+  // ResizeObserver fires when #map has a real size — reliable on both desktop and mobile
+  new ResizeObserver(() => {
+    if (suppressResize) return;
+    const mapEl = document.getElementById('map');
+    if (mapEl.clientHeight < 50) return; // not yet laid out
+    // On touch devices, skip when the keyboard is open (map height shrinks)
+    if (isTouchDevice && mapEl.clientHeight < SCREEN_H * 0.5) return;
+    map.invalidateSize({ animate: false });
+    fitFrance();
+  }).observe(document.getElementById('map'));
+
+  // Lift bottom bar + km display above the virtual keyboard on mobile
+  function updateBottomOffset() {
+    if (!window.visualViewport) return;
+    const vv = window.visualViewport;
+    const base = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+    document.getElementById('bottom-bar').style.bottom = (24 + base) + 'px';
+    document.getElementById('km-display').style.bottom = (92 + base) + 'px';
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateBottomOffset);
+    window.visualViewport.addEventListener('scroll', updateBottomOffset);
+  }
+
+  map.createPane('lines');        map.getPane('lines').style.zIndex        = 620;
+  map.createPane('dotsTarget');   map.getPane('dotsTarget').style.zIndex   = 630;
+  map.createPane('dotsSuggested');map.getPane('dotsSuggested').style.zIndex= 640;
+  map.createPane('dotsGuess');    map.getPane('dotsGuess').style.zIndex    = 650;
+  map.createPane('labels');       map.getPane('labels').style.zIndex       = 660;
+  // pointer events only on dot panes, not lines or labels
+  map.getPane('lines').style.pointerEvents        = 'none';
+  map.getPane('labels').style.pointerEvents       = 'none';
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics',
+    maxZoom: 19,
+  }).once('load', () => {
+    const cover = document.getElementById('map-cover');
+    if (cover) {
+      cover.classList.add('hidden');
+      cover.addEventListener('transitionend', () => cover.remove(), { once: true });
+    }
+    if (!restoreSession()) {
+      const btn = document.getElementById('play-btn');
+      btn.disabled = false;
+      btn.innerHTML = 'Jouer';
+    }
+  }).addTo(map);
+
+  // Rivers + Border deferred so the overlay paints immediately
+  setTimeout(() => {
+    const clippedSegments = [];
+    RIVERS_GEOJSON.features.forEach(feature => {
+      const coords = feature.geometry.type === 'LineString'
+        ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+      coords.forEach(line => {
+        let seg = [];
+        line.forEach(coord => {
+          if (turf.booleanPointInPolygon(turf.point(coord), FRANCE_GEOJSON)) {
+            seg.push(coord);
+          } else {
+            if (seg.length >= 2) clippedSegments.push({ type:'Feature', geometry:{ type:'LineString', coordinates:seg }, properties:{} });
+            seg = [];
+          }
+        });
+        if (seg.length >= 2) clippedSegments.push({ type:'Feature', geometry:{ type:'LineString', coordinates:seg }, properties:{} });
+      });
+    });
+    L.geoJSON({ type:'FeatureCollection', features:clippedSegments }, {
+      style: { color:'#ffffff', weight:1.2, opacity:0.25 }, interactive:false,
+    }).addTo(map);
+
+    const mainlandGeoJSON = {
+      type:'Feature',
+      geometry:{ type:'MultiPolygon', coordinates:[...FRANCE_GEOJSON.geometry.coordinates].sort((a,b) => b[0].length - a[0].length).slice(0,3) },
+      properties:{},
+    };
+    L.geoJSON(mainlandGeoJSON, { style:{ color:'#a0c8ff', weight:5, opacity:0.12, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
+    L.geoJSON(mainlandGeoJSON, { style:{ color:'#c8e0ff', weight:2.5, opacity:0.22, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
+    L.geoJSON(mainlandGeoJSON, { style:{ color:'#ffffff', weight:1, opacity:0.55, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
+  }, 0);
+
+  // ── Game state ────────────────────────────────────────────────────────────
+  const TOTAL_ROUNDS = 5;
+  let round = 0;
+  let targets = [];   // chosen cities for today
+  let guesses = [];   // {city, dist} per round
+  let guessMarker = null;
+  let targetMarker = null;
+  let roundLayers = [];  // all markers/lines added during a round
+  let guessedThisRound = false;
+
+  // ── Persistence ───────────────────────────────────────────────────────────
+  const SAVE_KEY = 'geospot_save';
+
+  function saveState(phase) {
+    const data = {
+      day: dayNumber,
+      phase,
+      round,
+      guesses: guesses.map(g => ({
+        targetCode: g.target.code,
+        cityCode: g.city.code,
+        dist: g.dist,
+      })),
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  }
+
+  function loadSave() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (data.day !== dayNumber) { localStorage.removeItem(SAVE_KEY); return null; }
+      return data;
+    } catch (e) { return null; }
+  }
+
+  // Seeded PRNG so the same cities are chosen every day
+  function seededRandom(seed) {
+    let s = seed;
+    return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+  }
+
+  function pickTargets() {
+    const seed = Math.floor((today - EPOCH) / 86400000);
+    const rng = seededRandom(seed + 42);
+    const picked = [];
+    const used = new Set();
+    while (picked.length < TOTAL_ROUNDS) {
+      const idx = Math.floor(rng() * CITIES_DATA.length);
+      if (!used.has(idx)) { used.add(idx); picked.push(CITIES_DATA[idx]); }
+    }
+    return picked;
+  }
+
+  function lighten(hex, amount = 0.45) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.round(((n >> 16) & 0xff) + (255 - ((n >> 16) & 0xff)) * amount);
+    const g = Math.round(((n >> 8)  & 0xff) + (255 - ((n >> 8)  & 0xff)) * amount);
+    const b = Math.round(( n        & 0xff) + (255 - ( n        & 0xff)) * amount);
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+
+  function makeMarker(latlng, color, label, permanent, dotPane) {
+    const pane = dotPane || 'dotsTarget';
+    const m = L.circleMarker(latlng, {
+      radius: 6, color: lighten(color), weight: 2, fillColor: color, fillOpacity: 1, pane,
+    }).addTo(map);
+    m._labelMarker = null;
+    if (label) {
+      const icon = L.divIcon({
+        className: '',
+        html: '<span class="dot-label" style="color:' + color + '">' + label + '</span>',
+        iconSize: [0, 0],
+        iconAnchor: [0, 18],
+      });
+      const lm = L.marker(latlng, { icon, pane: 'labels', interactive: false }).addTo(map);
+      lm._el = lm.getElement();
+      m._labelMarker = lm;
+      if (!permanent) lm.getElement().style.display = 'none';
+    }
+    m._hovered = false;
+    m._labelLocked = false;
+    m.on('mouseover', () => {
+      m._hovered = true;
+      m.setRadius(8);
+      if (m._labelMarker && !m._labelLocked) m._labelMarker.getElement().style.display = '';
+    });
+    m.on('mouseout', () => {
+      m._hovered = false;
+      requestAnimationFrame(() => {
+        if (!m._hovered) {
+          m.setRadius(6);
+          if (m._labelMarker && !permanent) m._labelMarker.getElement().style.display = 'none';
+        }
+      });
+    });
+    return m;
+  }
+
+  function popMarker(m) {
+    const REST = 6, BIG = 13;
+    const STEPS = 12, HALF = Math.floor(STEPS / 2);
+    let step = 0;
+    function tick() {
+      if (m._hovered) return;
+      step++;
+      const t = step / HALF;
+      const r = step <= HALF
+        ? REST + (BIG - REST) * t
+        : BIG - (BIG - REST) * ((step - HALF) / HALF);
+      m.setRadius(Math.round(r));
+      if (step < STEPS) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // Animate a polyline growing from p1 to p2 over `ms` ms, then call `done`
+  function animateLine(p1, p2, lineOpts, ms, done) {
+    const line = L.polyline([p1, p1], { ...lineOpts, pane: 'lines' }).addTo(map);
+    // ease-out cubic: starts fast, decelerates at the end
+    function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+    let start = null;
+    function tick(ts) {
+      if (!start) start = ts;
+      const raw = Math.min((ts - start) / ms, 1);
+      const t = easeOutCubic(raw);
+      const lat = p1[0] + (p2[0] - p1[0]) * t;
+      const lng = p1[1] + (p2[1] - p1[1]) * t;
+      line.setLatLngs([p1, [lat, lng]]);
+      if (raw < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        line.setLatLngs([p1, p2]);
+        if (done) done(line);
+      }
+    }
+    requestAnimationFrame(tick);
+    return line;
+  }
+
+  // Show a floating km label near a latlng that fades in then out
+  function showKmPop(latlng, text, color) {
+    const el = document.getElementById('km-display');
+    el.textContent = text;
+    el.style.color = color;
+    el.classList.remove('hide', 'visible');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { el.classList.add('visible'); });
+    });
+  }
+
+  function hideKmDisplay() {
+    const el = document.getElementById('km-display');
+    el.classList.add('hide');
+    el.addEventListener('transitionend', () => {
+      el.classList.remove('visible', 'hide');
+    }, { once: true });
+  }
+
+
+  // TEMP: color preview dots
+
+  const COLOR_TARGET = '#70a1ff';   // blue — city to find
+  const COLOR_GOLD   = '#f5a623';   // < 50 km
+  const COLOR_SILVER = '#c8d6e0';   // < 200 km
+  const COLOR_BRONZE = '#d4845a';   // ≥ 200 km
+
+  function guessColor(dist) {
+    if (dist < 50)  return COLOR_GOLD;
+    if (dist < 150) return COLOR_SILVER;
+    return COLOR_BRONZE;
+  }
+
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  // ── Round dots ────────────────────────────────────────────────────────────
+  function buildRoundDots() {
+    const el = document.getElementById('round-indicator');
+    el.innerHTML = '';
+    for (let i = 0; i < TOTAL_ROUNDS; i++) {
+      const d = document.createElement('div');
+      d.className = 'round-dot' + (i < round ? ' done' : i === round ? ' current' : '');
+      el.appendChild(d);
+    }
+    el.classList.add('visible');
+  }
+
+  // ── Start game ────────────────────────────────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    const playBtn = document.getElementById('play-btn');
+    if (e.key === 'Enter' && !document.getElementById('overlay').classList.contains('hidden') && !playBtn.disabled) {
+      playBtn.click();
+    }
+  });
+
+  document.getElementById('play-btn').addEventListener('click', () => {
+    suppressResize = true;
+    document.getElementById('overlay').classList.add('hidden');
+    targets = pickTargets();
+    startRound();
+    saveState('playing');
+    setTimeout(() => { suppressResize = false; }, 0);
+  });
+
+  function startRound() {
+    guessedThisRound = false;
+    actionBtnReady = false;
+    hideKmDisplay();
+    roundLayers.forEach(l => map.removeLayer(l));
+    roundLayers = [];
+    guessMarker = null;
+    targetMarker = null;
+
+    buildRoundDots();
+
+    const target = targets[round];
+    const [tLng, tLat] = target.centre.coordinates;
+
+    // Show target marker — label hidden until after guess
+    const spawnTarget = () => {
+      targetMarker = makeMarker([tLat, tLng], COLOR_TARGET, target.nom, false);
+      targetMarker._labelLocked = true; // prevent hover reveal before guess
+      roundLayers.push(targetMarker);
+      if (targetMarker._labelMarker) roundLayers.push(targetMarker._labelMarker);
+      popMarker(targetMarker);
+    };
+    if (round === 0) setTimeout(spawnTarget, 350); else spawnTarget();
+
+    // Show score panel with current round label
+    document.getElementById('score-panel').classList.add('visible');
+    document.getElementById('panel-round-label').textContent = 'Manche ' + (round + 1) + ' / ' + TOTAL_ROUNDS;
+
+    // Show search, hide button
+    document.getElementById('search-wrapper').style.display = 'block';
+    document.getElementById('submit-btn').style.display = 'flex';
+    document.getElementById('search-input').value = '';
+    document.getElementById('action-btn').style.display = 'none';
+    document.getElementById('search-input').focus();
+  }
+
+  // ── After guess ───────────────────────────────────────────────────────────
+  function onGuess(city) {
+    if (guessedThisRound) return;
+    guessedThisRound = true;
+    hideSuggestions();
+
+    const target = targets[round];
+    const [tLng, tLat] = target.centre.coordinates;
+    const [gLng, gLat] = city.centre.coordinates;
+    const dist = haversineKm(gLat, gLng, tLat, tLng);
+
+    guesses.push({ target, city, dist });
+    saveState('guessed');
+
+    const gColor = guessColor(dist);
+
+    // Unlock target label for hover after guess
+    targetMarker._labelLocked = false;
+
+    // 1. Animate line target → guess
+    const LINE_MS = 900;
+    const animLine = animateLine(
+      [tLat, tLng], [gLat, gLng],
+      { color:'#fff', weight:2, opacity:0.75, dashArray:'3 6' },
+      LINE_MS,
+      (line) => {
+        // 2. Pop guess marker
+        guessMarker = makeMarker([gLat, gLng], gColor, city.nom, true, 'dotsGuess');
+        roundLayers.push(guessMarker);
+        if (guessMarker._labelMarker) roundLayers.push(guessMarker._labelMarker);
+        popMarker(guessMarker);
+
+        // 3. Show km pop label
+        showKmPop([gLat, gLng], Math.round(dist) + ' km', gColor);
+
+        // 4. Update score panel
+        updateScorePanel();
+
+        // 5. Find up to 2 landmarks closer to the target than the player's guess
+        const closer = LANDMARKS
+          .map(([lat, lng, name]) => ({ lat, lng, name, d: haversineKm(lat, lng, tLat, tLng) }))
+          .filter(lm => lm.d < dist)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, 2);
+
+        if (closer.length === 0) {
+          showActionBtn();
+          return;
+        }
+
+        // 6. Animate lines to closer landmarks, then pop each dot, then show button
+        let done = 0;
+        closer.forEach((lm, i) => {
+          setTimeout(() => {
+            const lmLine = animateLine(
+              [tLat, tLng], [lm.lat, lm.lng],
+              { color: '#fff', weight: 1.5, opacity: 0.75, dashArray: '3 6' },
+              700,
+              () => {
+                const lmMarker = makeSuggestedMarker([lm.lat, lm.lng], guessColor(lm.d), lm.name);
+                roundLayers.push(lmMarker);
+                if (lmMarker._labelMarker) roundLayers.push(lmMarker._labelMarker);
+                popMarker(lmMarker);
+                done++;
+                if (done === closer.length) showActionBtn();
+              }
+            );
+            roundLayers.push(lmLine);
+          }, i * 180);
+        });
+      }
+    );
+    roundLayers.push(animLine);
+  }
+
+  function showActionBtn() {
+    document.getElementById('search-wrapper').style.display = 'none';
+    document.getElementById('submit-btn').style.display = 'none';
+    const btn = document.getElementById('action-btn');
+    btn.style.display = 'block';
+    btn.textContent = round < TOTAL_ROUNDS - 1 ? 'Suivant →' : 'Résultats';
+    actionBtnReady = false;
+    setTimeout(() => { actionBtnReady = true; }, 300);
+  }
+
+  // Slightly smaller dot for suggested landmarks
+  function makeSuggestedMarker(latlng, color, label) {
+    const m = L.circleMarker(latlng, {
+      radius: 5, color: lighten(color), weight: 1.5, fillColor: color, fillOpacity: 1, pane: 'dotsSuggested',
+    }).addTo(map);
+    m._labelMarker = null;
+    if (label) {
+      const icon = L.divIcon({
+        className: '',
+        html: '<span class="dot-label" style="color:' + color + '">' + label + '</span>',
+        iconSize: [0, 0],
+        iconAnchor: [0, 18],
+      });
+      const lm = L.marker(latlng, { icon, pane: 'labels', interactive: false }).addTo(map);
+      m._labelMarker = lm;
+    }
+    m._hovered = false;
+    m.on('mouseover', () => { m._hovered = true; m.setRadius(7); if (m._labelMarker) m._labelMarker.getElement().style.display = ''; });
+    m.on('mouseout', () => {
+      m._hovered = false;
+      requestAnimationFrame(() => { if (!m._hovered) { m.setRadius(5); if (m._labelMarker) m._labelMarker.getElement().style.display = 'none'; } });
+    });
+    if (m._labelMarker) m._labelMarker.getElement().style.display = 'none';
+    return m;
+  }
+
+  function updateScorePanel() {
+    const panel = document.getElementById('score-panel');
+    panel.classList.add('visible');
+    document.getElementById('panel-round-label').textContent = 'Manche ' + guesses.length + ' / ' + TOTAL_ROUNDS;
+
+    const rows = guesses.map(g =>
+      '<div class="score-row">' +
+        '<span class="sr-city">' + escapeHtml(g.city.nom) + '</span>' +
+        '<span class="sr-dist" style="color:' + guessColor(g.dist) + '">' + Math.round(g.dist) + ' km</span>' +
+      '</div>'
+    ).join('');
+    document.getElementById('score-rows').innerHTML = rows;
+
+    const total = guesses.reduce((s, g) => s + g.dist, 0);
+    const totalEl = document.getElementById('score-total');
+    const n = guesses.length;
+    const totalColor = total < 50 * n ? COLOR_GOLD : total < 150 * n ? COLOR_SILVER : COLOR_BRONZE;
+    const totalEl2 = document.getElementById('score-total-val');
+    totalEl2.textContent = Math.round(total) + ' km';
+    totalEl2.style.color = totalColor;
+  }
+
+  document.getElementById('action-btn').addEventListener('click', () => {
+    round++;
+    if (round < TOTAL_ROUNDS) {
+      startRound();
+      saveState('playing');
+    } else {
+      showResults();
+      saveState('results');
+    }
+  });
+
+  // ── Results ───────────────────────────────────────────────────────────────
+  function showResults() {
+    // Clear last round's markers
+    roundLayers.forEach(l => map.removeLayer(l));
+    roundLayers = [];
+
+    // Show all 5 target + guess markers with labels and lines
+    guesses.forEach(g => {
+      const [tLng, tLat] = g.target.centre.coordinates;
+      const [gLng, gLat] = g.city.centre.coordinates;
+
+      makeMarker([tLat, tLng], COLOR_TARGET, g.target.nom, false, 'dotsTarget');
+      makeMarker([gLat, gLng], guessColor(g.dist), g.city.nom, true, 'dotsGuess');
+
+      L.polyline([[gLat, gLng],[tLat, tLng]], { color:'#fff', weight:2, opacity:0.75, dashArray:'3 6', pane:'lines' }).addTo(map);
+    });
+
+    // Hide bottom bar entirely
+    document.getElementById('bottom-bar').style.display = 'none';
+    hideKmDisplay();
+
+    // Show share button
+    document.getElementById('share-btn').classList.add('visible');
+
+    // Mark all dots as done
+    document.querySelectorAll('.round-dot').forEach(d => { d.classList.remove('current'); d.classList.add('done'); });
+  }
+
+  // ── Restore session ───────────────────────────────────────────────────────
+  function restoreSession() {
+    const save = loadSave();
+    if (!save) return false;
+
+    targets = pickTargets();
+    const cityByCode = new Map(CITIES_DATA.map(c => [c.code, c]));
+
+    suppressResize = true;
+    document.getElementById('overlay').classList.add('hidden');
+    setTimeout(() => { suppressResize = false; }, 0);
+
+    if (save.phase === 'results') {
+      // Replay all guesses as in showResults
+      save.guesses.forEach((sg, i) => {
+        const target = targets[i];
+        const city = cityByCode.get(sg.cityCode);
+        if (!target || !city) return;
+        const [tLng, tLat] = target.centre.coordinates;
+        const [gLng, gLat] = city.centre.coordinates;
+        guesses.push({ target, city, dist: sg.dist });
+        makeMarker([tLat, tLng], COLOR_TARGET, target.nom, false, 'dotsTarget');
+        makeMarker([gLat, gLng], guessColor(sg.dist), city.nom, true, 'dotsGuess');
+        L.polyline([[tLat, tLng], [gLat, gLng]], { color:'#fff', weight:2, opacity:0.75, dashArray:'3 6', pane:'lines' }).addTo(map);
+      });
+      round = TOTAL_ROUNDS;
+      document.getElementById('score-panel').classList.add('visible');
+      updateScorePanel();
+      buildRoundDots();
+      document.querySelectorAll('.round-dot').forEach(d => { d.classList.remove('current'); d.classList.add('done'); });
+      document.getElementById('bottom-bar').style.display = 'none';
+      hideKmDisplay();
+      document.getElementById('share-btn').classList.add('visible');
+
+    } else if (save.phase === 'guessed') {
+      // Replay previous rounds into guesses array only (no markers)
+      save.guesses.forEach((sg, i) => {
+        const target = targets[i];
+        const city = cityByCode.get(sg.cityCode);
+        if (!target || !city) return;
+        guesses.push({ target, city, dist: sg.dist });
+      });
+      // Draw only the last round's markers into roundLayers so startRound() can clear them
+      const lastSg = save.guesses[save.guesses.length - 1];
+      const lastTarget = targets[save.guesses.length - 1];
+      const lastCity = cityByCode.get(lastSg.cityCode);
+      if (lastTarget && lastCity) {
+        const [tLng, tLat] = lastTarget.centre.coordinates;
+        const [gLng, gLat] = lastCity.centre.coordinates;
+        const tm = makeMarker([tLat, tLng], COLOR_TARGET, lastTarget.nom, false, 'dotsTarget');
+        const gm = makeMarker([gLat, gLng], guessColor(lastSg.dist), lastCity.nom, true, 'dotsGuess');
+        const line = L.polyline([[tLat, tLng], [gLat, gLng]], { color:'#fff', weight:2, opacity:0.75, dashArray:'3 6', pane:'lines' }).addTo(map);
+        roundLayers.push(tm, gm, line);
+        if (tm._labelMarker) roundLayers.push(tm._labelMarker);
+        if (gm._labelMarker) roundLayers.push(gm._labelMarker);
+      }
+      round = save.guesses.length - 1;
+      guessedThisRound = true;
+      document.getElementById('score-panel').classList.add('visible');
+      updateScorePanel();
+      buildRoundDots();
+      const lastGuess = save.guesses[save.guesses.length - 1];
+      showKmPop(null, Math.round(lastGuess.dist) + ' km', guessColor(lastGuess.dist));
+      showActionBtn();
+
+    } else {
+      // 'playing' — replay completed rounds silently, then start current round fresh
+      save.guesses.forEach((sg, i) => {
+        const target = targets[i];
+        const city = cityByCode.get(sg.cityCode);
+        if (!target || !city) return;
+        guesses.push({ target, city, dist: sg.dist });
+      });
+      round = save.guesses.length;
+      if (guesses.length > 0) updateScorePanel();
+      startRound();
+    }
+
+    return true;
+  }
+
+  // ── Share ─────────────────────────────────────────────────────────────────
+  document.querySelector('#score-panel .panel-title').addEventListener('click', () => {
+    document.getElementById('score-panel').classList.toggle('collapsed');
+  });
+
+  document.getElementById('share-btn').addEventListener('click', () => {
+    const total = guesses.reduce((s, g) => s + g.dist, 0);
+    function distEmoji(dist) {
+      if (dist < 50)  return '🟡';
+      if (dist < 150) return '⚪';
+      return '🟠';
+    }
+    const lines = guesses.map(g =>
+      distEmoji(g.dist) + ' ' + Math.round(g.dist) + ' km'
+    );
+    const text =
+      'GeoSpot #' + dayNumber + ' — ' + dateStr + '\n' +
+      'https://capitainecookie.github.io/geospot/\n\n' +
+      lines.join('\n') + '\n\n' +
+      'Total : ' + Math.round(total) + ' km';
+
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('share-btn');
+      btn.textContent = 'Copié !';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Partager'; btn.classList.remove('copied'); }, 2000);
+    });
+  });
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  const input = document.getElementById('search-input');
+  const suggestionsEl = document.getElementById('suggestions');
+  let activeIndex = -1;
+  let currentResults = [];
+
+  input.addEventListener('input', () => {
+    selectedGroup = null;
+    const q = input.value.trim();
+    if (q.length < 2) { hideSuggestions(); return; }
+    searchCities(q);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    const items = suggestionsEl.querySelectorAll('.suggestion-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = activeIndex < items.length - 1 ? activeIndex + 1 : 0;
+      updateActive(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = activeIndex > 0 ? activeIndex - 1 : items.length - 1;
+      updateActive(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && currentResults[activeIndex]) {
+        fillInput(currentResults[activeIndex]);
+      } else {
+        submitGuess();
+      }
+    } else if (e.key === 'Escape') {
+      hideSuggestions();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#search-wrapper')) hideSuggestions();
+  });
+
+  let actionBtnReady = false;
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const btn = document.getElementById('action-btn');
+      if (btn.style.display !== 'none' && btn.style.display !== '' && actionBtnReady) {
+        btn.click();
+      }
+    }
+  });
+
+  document.getElementById('submit-btn').addEventListener('click', submitGuess);
+
+  function normalize(str) {
+    return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  }
+
+  function searchCities(query) {
+    const q = normalize(query);
+    const byName = new Map();
+    for (const city of CITIES_DATA) {
+      if (normalize(city.nom).startsWith(q)) {
+        const key = city.nom;
+        if (!byName.has(key)) byName.set(key, []);
+        byName.get(key).push(city);
+      }
+    }
+    const groups = Array.from(byName.entries())
+      .map(([nom, cities]) => ({ nom, cities }))
+      .sort((a, b) => a.nom.length - b.nom.length);
+    currentResults = groups.slice(0, 5);
+    renderSuggestions(currentResults);
+  }
+
+  function renderSuggestions(results) {
+    activeIndex = -1;
+    if (!results.length) { hideSuggestions(); return; }
+    suggestionsEl.innerHTML = results.map((r, i) =>
+      '<div class="suggestion-item" data-index="' + i + '"><div class="name">' + escapeHtml(r.nom) + '</div></div>'
+    ).join('');
+    suggestionsEl.querySelectorAll('.suggestion-item').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        fillInput(currentResults[+el.dataset.index]);
+      });
+    });
+    suggestionsEl.style.display = 'block';
+  }
+
+  let selectedGroup = null;
+
+  function fillInput(r) {
+    selectedGroup = r;
+    input.value = r.nom;
+    hideSuggestions();
+    input.focus();
+  }
+
+  function resolveCity(group) {
+    if (group.cities.length === 1) return group.cities[0];
+    const target = targets[round];
+    const [tLng, tLat] = target.centre.coordinates;
+    return group.cities.reduce((best, city) => {
+      const [cLng, cLat] = city.centre.coordinates;
+      const [bLng, bLat] = best.centre.coordinates;
+      return haversineKm(cLat, cLng, tLat, tLng) < haversineKm(bLat, bLng, tLat, tLng) ? city : best;
+    });
+  }
+
+  function submitGuess() {
+    let city = null;
+    if (selectedGroup) {
+      city = resolveCity(selectedGroup);
+    } else {
+      const q = input.value.trim();
+      if (q.length >= 2) searchCities(q);
+      if (currentResults[0]) city = resolveCity(currentResults[0]);
+    }
+    if (!city) return;
+    onGuess(city);
+    selectedGroup = null;
+    input.value = '';
+    document.getElementById('search-wrapper').style.display = 'none';
+    document.getElementById('submit-btn').style.display = 'none';
+  }
+
+  function updateActive(items) {
+    items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+  }
+
+  function hideSuggestions() {
+    suggestionsEl.style.display = 'none';
+    suggestionsEl.innerHTML = '';
+    currentResults = [];
+    activeIndex = -1;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+</script>
+</body>
+</html>
