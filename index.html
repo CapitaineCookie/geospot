@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GeoSpot — Défi du jour</title>
+  <title>GeoSpot</title>
+  <script defer src="https://umami.jeremiecook.com/script.js" data-website-id="5e55ede2-9a70-4224-9f03-563a8d923d4c"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1110,7 +1111,7 @@
     const lines = guesses.map(g =>
       distEmoji(g.dist) + ' ' + Math.round(g.dist) + ' km'
     );
-    const url = 'https://capitainecookie.github.io/geospot/#s=' + buildShareFragment();
+    const url = 'https://geospot.fr/#s=' + buildShareFragment();
     const text =
       'GeoSpot #' + dayNumber + ' — ' + dateStr + '\n' +
       url + '\n\n' +
