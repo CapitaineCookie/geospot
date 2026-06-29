@@ -251,32 +251,36 @@
   }
 
   // ── Search dot ────────────────────────────────────────────────────────────
-  let searchDot = null;
-  let searchLabel = null;
+  let searchLayers = [];
 
-  function placeSearchDot(city) {
-    if (searchDot) { map.removeLayer(searchDot); searchDot = null; }
-    if (searchLabel) { map.removeLayer(searchLabel); searchLabel = null; }
+  function clearSearchDots() {
+    searchLayers.forEach(l => map.removeLayer(l));
+    searchLayers = [];
+  }
 
-    const [lng, lat] = city.centre.coordinates;
-    const latlng = [lat, lng];
+  function placeSearchDots(cities) {
+    clearSearchDots();
+    cities.forEach(city => {
+      const [lng, lat] = city.centre.coordinates;
+      const latlng = [lat, lng];
 
-    const icon = L.divIcon({
-      className: '',
-      html: '<span class="dot-label" style="color:' + COLOR_SEARCH + '">' + escapeHtml(city.nom) + '</span>',
-      iconSize: [0, 0],
-      iconAnchor: [0, 18],
+      const icon = L.divIcon({
+        className: '',
+        html: '<span class="dot-label" style="color:' + COLOR_SEARCH + '">' + escapeHtml(city.nom) + '</span>',
+        iconSize: [0, 0],
+        iconAnchor: [0, 18],
+      });
+      const label = L.marker(latlng, { icon, pane: 'labels', interactive: false }).addTo(map);
+      const dot = L.circleMarker(latlng, {
+        radius: 6,
+        color: STROKE_SEARCH,
+        weight: 2,
+        fillColor: COLOR_SEARCH,
+        fillOpacity: 1,
+        pane: 'dotsSearch',
+      }).addTo(map);
+      searchLayers.push(dot, label);
     });
-    searchLabel = L.marker(latlng, { icon, pane: 'labels', interactive: false }).addTo(map);
-
-    searchDot = L.circleMarker(latlng, {
-      radius: 6,
-      color: STROKE_SEARCH,
-      weight: 2,
-      fillColor: COLOR_SEARCH,
-      fillOpacity: 1,
-      pane: 'dotsSearch',
-    }).addTo(map);
   }
 
   // ── Tile + layers ─────────────────────────────────────────────────────────
@@ -376,21 +380,17 @@
     input.focus();
   }
 
-  function resolveCity(group) {
-    return group.cities[0];
-  }
-
   function submitSearch() {
-    let city = null;
+    let group = null;
     if (selectedGroup) {
-      city = resolveCity(selectedGroup);
+      group = selectedGroup;
     } else {
       const q = input.value.trim();
       if (q.length >= 2) searchCities(q);
-      if (currentResults[0]) city = resolveCity(currentResults[0]);
+      if (currentResults[0]) group = currentResults[0];
     }
-    if (!city) return;
-    placeSearchDot(city);
+    if (!group) return;
+    placeSearchDots(group.cities);
     selectedGroup = null;
     input.value = '';
     hideSuggestions();
