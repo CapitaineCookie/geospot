@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
+  <title>Atlas - GeoSpot</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      overflow: hidden;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 10px 16px;
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.08em; color: #e94560; }
+    header .subtitle { font-size: 0.78rem; color: #888; letter-spacing: 0.04em; }
+
+    /* ── Map ── */
+    #map { flex: 1; width: 100%; position: relative; background: #1a1a2e; }
+    .leaflet-container { background: #1a1a2e !important; }
+    .leaflet-interactive { transition: r 0.15s ease, d 0.15s ease; }
+
+    /* ── Bottom bar ── */
+    #bottom-bar {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(300px, calc(100vw - 32px));
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #search-wrapper { position: relative; flex: 1; min-width: 0; }
+
+    #search-input {
+      width: 100%;
+      padding: 12px 18px;
+      border-radius: 30px;
+      border: 1px solid #0f3460;
+      background: rgba(22, 33, 62, 0.92);
+      color: #eee;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+    #search-input:focus { border-color: #e94560; }
+    #search-input::placeholder { color: #888; }
+
+    #submit-btn {
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: #e94560;
+      color: #fff;
+      font-size: 1.1rem;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: background 0.2s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #submit-btn:hover { background: #c73652; }
+    #submit-btn:active { transform: scale(0.93); }
+
+    #suggestions {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0; right: 0;
+      background: rgba(22, 33, 62, 0.96);
+      border: 1px solid #0f3460;
+      border-radius: 16px;
+      overflow: hidden;
+      z-index: 9999;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+    }
+    .suggestion-item {
+      padding: 10px 18px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      border-bottom: 1px solid #0f3460;
+      transition: background 0.15s;
+    }
+    .suggestion-item:last-child { border-bottom: none; }
+    .suggestion-item:hover, .suggestion-item.active { background: #0f3460; color: #e94560; }
+    .suggestion-item .name { font-weight: 600; }
+
+    .dot-label {
+      position: absolute;
+      transform: translateX(-50%);
+      bottom: -8px;
+      left: 0;
+      white-space: nowrap;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7);
+      pointer-events: none;
+      letter-spacing: 0.02em;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>GeoSpot</h1>
+  <div class="subtitle">Atlas</div>
+</header>
+
+<div id="map"></div>
+
+<div id="bottom-bar">
+  <div id="search-wrapper">
+    <input id="search-input" type="text" placeholder="Recherche une ville…" autocomplete="off" spellcheck="false" />
+    <div id="suggestions" style="display:none"></div>
+  </div>
+  <button id="submit-btn" title="Valider" onclick="submitSearch()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="borders.js"></script>
+<script src="rivers.js"></script>
+<script src="landmarks.js"></script>
+<script src="cities.js"></script>
+<script>
+  // ── Map ───────────────────────────────────────────────────────────────────
+  const map = L.map('map', {
+    center: [46.6, 2.5], zoom: 6,
+    zoomSnap: 0,
+    zoomControl: false, dragging: false,
+    scrollWheelZoom: false, doubleClickZoom: false,
+    touchZoom: false, boxZoom: false, keyboard: false,
+  });
+
+  const LAT_SOUTH = 41.2;
+  const LAT_NORTH = 51.2;
+  const LNG_WEST  = -5.2;
+  const LNG_EAST  =  9.6;
+  const LNG_CENTER = (LNG_WEST + LNG_EAST) / 2;
+  const PAD_TOP = 30;
+  const PAD_BOTTOM = 100;
+  const PAD_SIDES = 16;
+
+  const isTouchDevice = navigator.maxTouchPoints > 0;
+  const SCREEN_H = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+  function fitLatitudes() {
+    const mapEl = document.getElementById('map');
+    const availH = mapEl.clientHeight - PAD_TOP - PAD_BOTTOM;
+    const availW = mapEl.clientWidth - PAD_SIDES * 2;
+    const centerLat = (LAT_NORTH + LAT_SOUTH) / 2;
+
+    let lo = 0, hi = 18;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      const yS = map.project([LAT_SOUTH, 0], mid).y;
+      const yN = map.project([LAT_NORTH, 0], mid).y;
+      if (yS - yN < availH) lo = mid; else hi = mid;
+    }
+    const zoomH = lo;
+
+    lo = 0; hi = 18;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      const xW = map.project([0, LNG_WEST],  mid).x;
+      const xE = map.project([0, LNG_EAST],  mid).x;
+      if (xE - xW < availW) lo = mid; else hi = mid;
+    }
+    const zoomW = lo;
+
+    map.setView([centerLat, LNG_CENTER], Math.min(zoomH, zoomW), { animate: false });
+  }
+
+  new ResizeObserver(() => {
+    const mapEl = document.getElementById('map');
+    if (mapEl.clientHeight < 50) return;
+    if (isTouchDevice && mapEl.clientHeight < SCREEN_H * 0.5) return;
+    map.invalidateSize({ animate: false });
+    fitLatitudes();
+  }).observe(document.getElementById('map'));
+
+  function updateBottomOffset() {
+    if (!window.visualViewport) return;
+    const vv = window.visualViewport;
+    const base = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+    document.getElementById('bottom-bar').style.bottom = (24 + base) + 'px';
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateBottomOffset);
+    window.visualViewport.addEventListener('scroll', updateBottomOffset);
+  }
+
+  map.createPane('lines');        map.getPane('lines').style.zIndex        = 620;
+  map.createPane('dotsLandmark'); map.getPane('dotsLandmark').style.zIndex = 630;
+  map.createPane('dotsSearch');   map.getPane('dotsSearch').style.zIndex   = 650;
+  map.createPane('labels');       map.getPane('labels').style.zIndex       = 660;
+  map.getPane('lines').style.pointerEvents  = 'none';
+  map.getPane('labels').style.pointerEvents = 'none';
+
+  const COLOR_LANDMARK = '#70a1ff';
+  const STROKE_LANDMARK = '#a8c8ff';
+  const COLOR_SEARCH = '#f5a623';
+  const STROKE_SEARCH = '#f9c87a';
+
+  // ── Landmark dots ─────────────────────────────────────────────────────────
+  function addLandmark(lat, lng, name) {
+    const latlng = [lat, lng];
+    const labelIcon = L.divIcon({
+      className: '',
+      html: '<span class="dot-label" style="color:' + COLOR_LANDMARK + '">' + escapeHtml(name) + '</span>',
+      iconSize: [0, 0],
+      iconAnchor: [0, 18],
+    });
+    const labelMarker = L.marker(latlng, { icon: labelIcon, pane: 'labels', interactive: false });
+
+    const dot = L.circleMarker(latlng, {
+      radius: 5,
+      color: STROKE_LANDMARK,
+      weight: 1.5,
+      fillColor: COLOR_LANDMARK,
+      fillOpacity: 1,
+      pane: 'dotsLandmark',
+    }).addTo(map);
+
+    dot.on('mouseover', () => { dot.setRadius(7); labelMarker.addTo(map); });
+    dot.on('mouseout',  () => { dot.setRadius(5); map.removeLayer(labelMarker); });
+  }
+
+  // ── Search dot ────────────────────────────────────────────────────────────
+  let searchDot = null;
+  let searchLabel = null;
+
+  function placeSearchDot(city) {
+    if (searchDot) { map.removeLayer(searchDot); searchDot = null; }
+    if (searchLabel) { map.removeLayer(searchLabel); searchLabel = null; }
+
+    const [lng, lat] = city.centre.coordinates;
+    const latlng = [lat, lng];
+
+    const icon = L.divIcon({
+      className: '',
+      html: '<span class="dot-label" style="color:' + COLOR_SEARCH + '">' + escapeHtml(city.nom) + '</span>',
+      iconSize: [0, 0],
+      iconAnchor: [0, 18],
+    });
+    searchLabel = L.marker(latlng, { icon, pane: 'labels', interactive: false }).addTo(map);
+
+    searchDot = L.circleMarker(latlng, {
+      radius: 6,
+      color: STROKE_SEARCH,
+      weight: 2,
+      fillColor: COLOR_SEARCH,
+      fillOpacity: 1,
+      pane: 'dotsSearch',
+    }).addTo(map);
+  }
+
+  // ── Tile + layers ─────────────────────────────────────────────────────────
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics',
+    maxZoom: 19,
+  }).addTo(map);
+
+  setTimeout(() => {
+    const clippedSegments = [];
+    RIVERS_GEOJSON.features.forEach(feature => {
+      const coords = feature.geometry.type === 'LineString'
+        ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+      coords.forEach(line => {
+        let seg = [];
+        line.forEach(coord => {
+          if (turf.booleanPointInPolygon(turf.point(coord), FRANCE_GEOJSON)) {
+            seg.push(coord);
+          } else {
+            if (seg.length >= 2) clippedSegments.push({ type:'Feature', geometry:{ type:'LineString', coordinates:seg }, properties:{} });
+            seg = [];
+          }
+        });
+        if (seg.length >= 2) clippedSegments.push({ type:'Feature', geometry:{ type:'LineString', coordinates:seg }, properties:{} });
+      });
+    });
+    L.geoJSON({ type:'FeatureCollection', features:clippedSegments }, {
+      style: { color:'#ffffff', weight:1.2, opacity:0.25 }, interactive: false,
+    }).addTo(map);
+
+    const mainlandGeoJSON = {
+      type: 'Feature',
+      geometry: {
+        type: 'MultiPolygon',
+        coordinates: [...FRANCE_GEOJSON.geometry.coordinates].sort((a, b) => b[0].length - a[0].length).slice(0, 3),
+      },
+      properties: {},
+    };
+    L.geoJSON(mainlandGeoJSON, {
+      style: { color:'#ffffff', weight:1.5, opacity:0.5, fill: false }, interactive: false,
+    }).addTo(map);
+
+    LANDMARKS.forEach(([lat, lng, name]) => addLandmark(lat, lng, name));
+  }, 0);
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  const input = document.getElementById('search-input');
+  const suggestionsEl = document.getElementById('suggestions');
+  let activeIndex = -1;
+  let currentResults = [];
+  let selectedGroup = null;
+
+  function normalize(str) {
+    return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function searchCities(query) {
+    const q = normalize(query);
+    const byName = new Map();
+    for (const city of CITIES_DATA) {
+      if (normalize(city.nom).startsWith(q)) {
+        const key = city.nom;
+        if (!byName.has(key)) byName.set(key, []);
+        byName.get(key).push(city);
+      }
+    }
+    const groups = Array.from(byName.entries())
+      .map(([nom, cities]) => ({ nom, cities }))
+      .sort((a, b) => a.nom.length - b.nom.length);
+    currentResults = groups.slice(0, 5);
+    renderSuggestions(currentResults);
+  }
+
+  function renderSuggestions(results) {
+    activeIndex = -1;
+    if (!results.length) { hideSuggestions(); return; }
+    suggestionsEl.innerHTML = results.map((r, i) =>
+      '<div class="suggestion-item" data-index="' + i + '"><div class="name">' + escapeHtml(r.nom) + '</div></div>'
+    ).join('');
+    suggestionsEl.querySelectorAll('.suggestion-item').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        fillInput(currentResults[+el.dataset.index]);
+      });
+    });
+    suggestionsEl.style.display = 'block';
+  }
+
+  function fillInput(r) {
+    selectedGroup = r;
+    input.value = r.nom;
+    hideSuggestions();
+    input.focus();
+  }
+
+  function resolveCity(group) {
+    return group.cities[0];
+  }
+
+  function submitSearch() {
+    let city = null;
+    if (selectedGroup) {
+      city = resolveCity(selectedGroup);
+    } else {
+      const q = input.value.trim();
+      if (q.length >= 2) searchCities(q);
+      if (currentResults[0]) city = resolveCity(currentResults[0]);
+    }
+    if (!city) return;
+    placeSearchDot(city);
+    selectedGroup = null;
+    input.value = '';
+    hideSuggestions();
+  }
+
+  function updateActive(items) {
+    items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+  }
+
+  function hideSuggestions() {
+    suggestionsEl.style.display = 'none';
+    suggestionsEl.innerHTML = '';
+    currentResults = [];
+    activeIndex = -1;
+  }
+
+  input.addEventListener('input', () => {
+    selectedGroup = null;
+    const q = input.value.trim();
+    if (q.length < 2) { hideSuggestions(); return; }
+    searchCities(q);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    const items = suggestionsEl.querySelectorAll('.suggestion-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = activeIndex < items.length - 1 ? activeIndex + 1 : 0;
+      updateActive(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = activeIndex > 0 ? activeIndex - 1 : items.length - 1;
+      updateActive(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && currentResults[activeIndex]) {
+        fillInput(currentResults[activeIndex]);
+      } else {
+        submitSearch();
+      }
+    } else if (e.key === 'Escape') {
+      hideSuggestions();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#search-wrapper')) hideSuggestions();
+  });
+</script>
+</body>
+</html>

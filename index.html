@@ -524,6 +524,13 @@
     window.visualViewport.addEventListener('scroll', updateBottomOffset);
   }
 
+  // Prevent iOS from scrolling the page when the keyboard opens
+  document.addEventListener('touchmove', function(e) {
+    const suggestions = document.getElementById('suggestions');
+    if (suggestions && suggestions.contains(e.target)) return; // allow scroll inside suggestions list
+    e.preventDefault();
+  }, { passive: false });
+
   map.createPane('lines');        map.getPane('lines').style.zIndex        = 620;
   map.createPane('dotsTarget');   map.getPane('dotsTarget').style.zIndex   = 630;
   map.createPane('dotsSuggested');map.getPane('dotsSuggested').style.zIndex= 640;
