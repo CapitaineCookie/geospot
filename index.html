@@ -4,15 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
   <title>GeoSpot</title>
-  <script>
-    function umamiRewrite(type, payload) {
-      if (payload && payload.url) {
-        payload.url = payload.url.replace(/^\/?#s=(.+)$/, '/r/$1');
-      }
-      return payload;
-    }
-  </script>
-  <script defer src="https://umami.jeremiecook.com/script.js" data-website-id="5e55ede2-9a70-4224-9f03-563a8d923d4c" data-before-send="umamiRewrite"></script>
+  <script defer src="https://umami.jeremiecook.com/script.js" data-website-id="5e55ede2-9a70-4224-9f03-563a8d923d4c"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
