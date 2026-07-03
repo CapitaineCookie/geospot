@@ -684,14 +684,20 @@
     m.on('mouseover', () => {
       m._hovered = true;
       m.setRadius(8);
-      if (m._labelMarker && !m._labelLocked) m._labelMarker.getElement().style.display = '';
+      if (m._labelMarker && !m._labelLocked) {
+        m._labelMarker.getElement().style.display = '';
+        m._labelMarker.getElement().style.zIndex = 9999;
+      }
     });
     m.on('mouseout', () => {
       m._hovered = false;
       requestAnimationFrame(() => {
         if (!m._hovered) {
           m.setRadius(6);
-          if (m._labelMarker && !permanent) m._labelMarker.getElement().style.display = 'none';
+          if (m._labelMarker) {
+            if (!permanent) m._labelMarker.getElement().style.display = 'none';
+            m._labelMarker.getElement().style.zIndex = '';
+          }
         }
       });
     });
@@ -945,10 +951,10 @@
       m._labelMarker = lm;
     }
     m._hovered = false;
-    m.on('mouseover', () => { m._hovered = true; m.setRadius(7); if (m._labelMarker) m._labelMarker.getElement().style.display = ''; });
+    m.on('mouseover', () => { m._hovered = true; m.setRadius(7); if (m._labelMarker) { m._labelMarker.getElement().style.display = ''; m._labelMarker.getElement().style.zIndex = 9999; } });
     m.on('mouseout', () => {
       m._hovered = false;
-      requestAnimationFrame(() => { if (!m._hovered) { m.setRadius(5); if (m._labelMarker) m._labelMarker.getElement().style.display = 'none'; } });
+      requestAnimationFrame(() => { if (!m._hovered) { m.setRadius(5); if (m._labelMarker) { m._labelMarker.getElement().style.display = 'none'; m._labelMarker.getElement().style.zIndex = ''; } } });
     });
     if (m._labelMarker) m._labelMarker.getElement().style.display = 'none';
     return m;
@@ -1310,7 +1316,7 @@
   document.getElementById('submit-btn').addEventListener('click', submitGuess);
 
   function normalize(str) {
-    return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    return str.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/-/g, ' ').toLowerCase();
   }
 
   function searchCities(query) {
@@ -1365,14 +1371,18 @@
     });
   }
 
+  function normalizeExact(str) {
+    return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  }
+
   function submitGuess() {
     let city = null;
     if (selectedGroup) {
       city = resolveCity(selectedGroup);
     } else {
-      const q = input.value.trim();
-      if (q.length >= 2) searchCities(q);
-      if (currentResults[0]) city = resolveCity(currentResults[0]);
+      const q = normalizeExact(input.value.trim());
+      const exact = currentResults.find(r => normalizeExact(r.nom) === q);
+      if (exact) city = resolveCity(exact);
     }
     if (!city) return;
     onGuess(city);

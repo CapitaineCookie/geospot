@@ -246,7 +246,7 @@
       pane: 'dotsLandmark',
     }).addTo(map);
 
-    dot.on('mouseover', () => { dot.setRadius(7); labelMarker.addTo(map); });
+    dot.on('mouseover', () => { dot.setRadius(7); labelMarker.addTo(map); labelMarker.getElement().style.zIndex = 9999; });
     dot.on('mouseout',  () => { dot.setRadius(5); map.removeLayer(labelMarker); });
   }
 
@@ -334,6 +334,10 @@
   let selectedGroup = null;
 
   function normalize(str) {
+    return str.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/-/g, ' ').toLowerCase();
+  }
+
+  function normalizeExact(str) {
     return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   }
 
@@ -385,9 +389,9 @@
     if (selectedGroup) {
       group = selectedGroup;
     } else {
-      const q = input.value.trim();
-      if (q.length >= 2) searchCities(q);
-      if (currentResults[0]) group = currentResults[0];
+      const q = normalizeExact(input.value.trim());
+      const exact = currentResults.find(r => normalizeExact(r.nom) === q);
+      if (exact) group = exact;
     }
     if (!group) return;
     placeSearchDots(group.cities);
