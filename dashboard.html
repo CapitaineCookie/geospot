@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeoSpot — Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #1a1a2e; color: #eee; padding: 32px 24px; }
+    h1 { color: #e94560; font-size: 1.6rem; margin-bottom: 24px; }
+    .big-stat { font-size: 1.1rem; color: #ccc; margin-bottom: 32px; }
+    .big-stat strong { color: #fff; font-size: 1.4rem; }
+    .day-panel { background: #16213e; border: 1px solid #0f3460; border-radius: 16px; padding: 20px 24px; margin-bottom: 40px; }
+    .day-selector { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .day-selector button { background: #1a1a2e; border: 1px solid #0f3460; color: #eee; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 0.88rem; }
+    .day-selector button:hover:not(:disabled) { background: #0f3460; }
+    .day-selector button:disabled { color: #444; border-color: #222; cursor: default; }
+    .day-selector span { font-size: 0.92rem; color: #ccc; }
+    #status { color: #555; font-size: 0.78rem; margin-bottom: 16px; }
+
+    /* Funnel chart */
+    .funnel { display: flex; flex-direction: column; gap: 10px; max-width: 500px; }
+    .funnel-row { display: flex; align-items: center; gap: 12px; }
+    .funnel-label { font-size: 0.82rem; color: #aaa; width: 130px; flex-shrink: 0; text-align: right; }
+    .funnel-bar-track { flex: 1; background: #0f3460; border-radius: 6px; height: 28px; overflow: hidden; }
+    .funnel-bar-fill { height: 100%; background: #e94560; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; font-size: 0.8rem; font-weight: 700; color: #fff; white-space: nowrap; transition: width 0.5s ease; min-width: 2px; }
+
+    /* History table */
+    .section { margin-top: 40px; }
+    h2 { font-size: 0.85rem; color: #666; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; background: #16213e; border-radius: 14px; overflow: hidden; border: 1px solid #0f3460; }
+    th { text-align: left; padding: 10px 16px; font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #0f3460; }
+    td { padding: 10px 16px; font-size: 0.88rem; border-bottom: 1px solid #0f3460; }
+    tr:last-child td { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+<h1>Dashboard</h1>
+
+<div class="day-panel">
+  <div class="day-selector">
+    <button id="prev-btn">←</button>
+    <span id="day-label"></span>
+    <button id="next-btn">→</button>
+  </div>
+  <div id="status"></div>
+  <div class="big-stat" id="big-stat"></div>
+  <div class="funnel" id="funnel"></div>
+</div>
+
+<div class="section">
+  <h2>Historique par jour</h2>
+  <table id="history-table">
+    <thead><tr><th>Jour</th><th>Date</th><th>Jouer</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>Résultats</th></tr></thead>
+    <tbody id="history-body"></tbody>
+  </table>
+</div>
+
+<script>
+  const SB_URL = 'https://njnzxcxaekvbonahaxgh.supabase.co';
+  const SB_KEY = 'sb_publishable_P-hy_VtGaIT_yi1UKoEGvw_G4S1R1XU';
+  const EPOCH = new Date('2026-06-22T00:00:00');
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayNumber = Math.floor((today - EPOCH) / 86400000) + 1;
+  let currentDay = todayNumber;
+
+  function dayToDate(n) {
+    const d = new Date(EPOCH);
+    d.setDate(d.getDate() + n - 1);
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  async function fetchEvents() {
+    const res = await fetch(SB_URL + '/rest/v1/events?select=event,day,created_at&order=created_at.desc&limit=5000', {
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    return res.json();
+  }
+
+  function count(events, event, day) {
+    return events.filter(e => e.event === event && e.day === day).length;
+  }
+
+  function render(events) {
+    document.getElementById('day-label').textContent = 'Défi #' + currentDay + ' — ' + dayToDate(currentDay);
+    document.getElementById('prev-btn').disabled = currentDay <= 1;
+    document.getElementById('next-btn').disabled = currentDay >= todayNumber;
+
+    const plays   = count(events, 'play',   currentDay);
+    const next1   = count(events, 'next_1', currentDay);
+    const next2   = count(events, 'next_2', currentDay);
+    const next3   = count(events, 'next_3', currentDay);
+    const next4   = count(events, 'next_4', currentDay);
+    const results = count(events, 'result', currentDay);
+
+    // Big stat
+    document.getElementById('big-stat').innerHTML = 'Parties jouées : <strong>' + results + '</strong>';
+
+    // Funnel chart
+    const steps = [
+      { label: 'Jouer',     n: plays },
+      { label: 'Suivant R1', n: next1 },
+      { label: 'Suivant R2', n: next2 },
+      { label: 'Suivant R3', n: next3 },
+      { label: 'Suivant R4', n: next4 },
+      { label: 'Résultats', n: results },
+    ];
+    const base = plays || 1;
+    document.getElementById('funnel').innerHTML = steps.map(s => {
+      const pct = Math.round(s.n / base * 100);
+      const label = s.n + (plays > 0 ? '  (' + pct + '%)' : '');
+      return `<div class="funnel-row">
+        <div class="funnel-label">${s.label}</div>
+        <div class="funnel-bar-track">
+          <div class="funnel-bar-fill" style="width:${pct}%">${s.n > 0 ? label : ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // History table
+    const days = [...new Set(events.map(e => e.day))].sort((a, b) => b - a);
+    document.getElementById('history-body').innerHTML = days.map(d => {
+      const p  = count(events, 'play',   d);
+      const n1 = count(events, 'next_1', d);
+      const n2 = count(events, 'next_2', d);
+      const n3 = count(events, 'next_3', d);
+      const n4 = count(events, 'next_4', d);
+      const r  = count(events, 'result', d);
+      return `<tr>
+        <td>#${d}</td>
+        <td>${dayToDate(d)}</td>
+        <td>${p}</td><td>${n1}</td><td>${n2}</td><td>${n3}</td><td>${n4}</td><td>${r}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('status').textContent = events.length + ' événements au total';
+  }
+
+  let allEvents = [];
+
+  async function load() {
+    const data = await fetchEvents();
+    if (!Array.isArray(data)) {
+      document.getElementById('status').textContent = 'Erreur : ' + JSON.stringify(data);
+      return;
+    }
+    allEvents = data;
+    render(allEvents);
+  }
+
+  document.getElementById('prev-btn').addEventListener('click', () => { currentDay--; render(allEvents); });
+  document.getElementById('next-btn').addEventListener('click', () => { currentDay++; render(allEvents); });
+
+  load();
+</script>
+</body>
+</html>

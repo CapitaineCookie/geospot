@@ -389,6 +389,7 @@
     <h2>GeoSpot</h2>
     <div class="subtitle" id="overlay-title"></div>
     <div class="date" id="overlay-date"></div>
+    <div id="player-count" style="font-size:0.78rem;color:#888;margin-top:4px;min-height:1.1em"></div>
     <svg viewBox="0 0 200 80" width="200" height="80" style="margin:4px auto 8px;display:block">
       <!-- dashed line guess → target -->
       <line x1="68" y1="50" x2="132" y2="50" stroke="white" stroke-width="2" stroke-dasharray="4 7" stroke-linecap="round" stroke-opacity="0.75"/>
@@ -806,6 +807,7 @@
 
   document.getElementById('play-btn').addEventListener('click', () => {
     suppressResize = true;
+    trackEvent('play');
     document.getElementById('overlay').classList.add('hidden');
     targets = pickTargets();
     startRound();
@@ -985,9 +987,11 @@
   document.getElementById('action-btn').addEventListener('click', () => {
     round++;
     if (round < TOTAL_ROUNDS) {
+      trackEvent('next_' + round);
       startRound();
       saveState('playing');
     } else {
+      trackEvent('result');
       showResults();
       saveState('results');
     }
@@ -1225,6 +1229,20 @@
       }
     } catch (e) {}
 
+    if (sharedDay <= 12) {
+      document.getElementById('spoiler-title').textContent = `Défi #${sharedDay}`;
+      document.getElementById('spoiler-date').textContent = (() => {
+        const d = new Date(EPOCH); d.setDate(d.getDate() + sharedDay - 1);
+        return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
+      })();
+      document.getElementById('spoiler-msg').textContent = 'Ces résultats ne sont plus disponibles.';
+      document.getElementById('spoiler-show-btn').style.display = 'none';
+      document.getElementById('spoiler-play-btn').textContent = 'Retour au jeu';
+      document.getElementById('spoiler-play-btn').onclick = () => { window.location.href = 'https://geospot.fr'; };
+      document.getElementById('spoiler-overlay').classList.remove('hidden');
+      return true;
+    }
+
     if (isSharedToday && !alreadyDone) {
       // Show spoiler guard
       const sharedDate = new Date(EPOCH);
@@ -1402,6 +1420,38 @@
     currentResults = [];
     activeIndex = -1;
   }
+
+  // ── Supabase analytics ───────────────────────────────────────────────────
+  const SB_URL = 'https://njnzxcxaekvbonahaxgh.supabase.co';
+  const SB_KEY = 'sb_publishable_P-hy_VtGaIT_yi1UKoEGvw_G4S1R1XU';
+
+  function trackEvent(event) {
+    fetch(SB_URL + '/rest/v1/events', {
+      method: 'POST',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ event, day: dayNumber }),
+    }).catch(() => {});
+  }
+
+  async function loadPlayerCount() {
+    try {
+      const res = await fetch(
+        SB_URL + '/rest/v1/events?select=id&event=eq.result&day=eq.' + dayNumber,
+        { headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Prefer': 'count=exact' } }
+      );
+      const count = parseInt(res.headers.get('content-range')?.split('/')[1] || '0', 10);
+      if (count > 0) {
+        document.getElementById('player-count').textContent =
+          count + ' joueur' + (count > 1 ? 's' : '') + ' ' + (count > 1 ? 'ont' : 'a') + ' joué aujourd\'hui';
+      }
+    } catch (e) {}
+  }
+
+  loadPlayerCount();
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
