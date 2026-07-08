@@ -64,7 +64,7 @@
 <div class="section">
   <h2>Historique par jour</h2>
   <table id="history-table">
-    <thead><tr><th>Jour</th><th>Date</th><th>Jouer</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>Résultats</th></tr></thead>
+    <thead><tr><th>Jour</th><th>Date</th><th>Jouer</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>Résultats</th><th style="border-left:1px solid #0f3460;color:#888">Partager</th></tr></thead>
     <tbody id="history-body"></tbody>
   </table>
 </div>
@@ -140,25 +140,36 @@
     document.getElementById('big-stat').innerHTML = 'Parties jouées : <strong>' + results + '</strong>';
 
     // Funnel chart
-    const steps = [
-      { label: 'Jouer',     n: plays },
+    const shares  = count(events, 'share',  currentDay);
+
+    const mainSteps = [
+      { label: 'Jouer',      n: plays },
       { label: 'Suivant R1', n: next1 },
       { label: 'Suivant R2', n: next2 },
       { label: 'Suivant R3', n: next3 },
       { label: 'Suivant R4', n: next4 },
-      { label: 'Résultats', n: results },
+      { label: 'Résultats',  n: results },
     ];
     const base = plays || 1;
-    document.getElementById('funnel').innerHTML = steps.map(s => {
-      const pct = Math.round(s.n / base * 100);
-      const label = s.n + (plays > 0 ? '  (' + pct + '%)' : '');
-      return `<div class="funnel-row">
-        <div class="funnel-label">${s.label}</div>
-        <div class="funnel-bar-track">
-          <div class="funnel-bar-fill" style="width:${pct}%">${s.n > 0 ? label : ''}</div>
-        </div>
-      </div>`;
-    }).join('');
+    const sharePct = Math.round(shares / (results || 1) * 100);
+    document.getElementById('funnel').innerHTML =
+      mainSteps.map(s => {
+        const pct = Math.round(s.n / base * 100);
+        const label = s.n + (plays > 0 ? '  (' + pct + '%)' : '');
+        return `<div class="funnel-row">
+          <div class="funnel-label">${s.label}</div>
+          <div class="funnel-bar-track">
+            <div class="funnel-bar-fill" style="width:${pct}%">${s.n > 0 ? label : ''}</div>
+          </div>
+        </div>`;
+      }).join('') +
+      `<div style="border-top:1px solid #0f3460;margin:10px 0"></div>
+       <div class="funnel-row">
+         <div class="funnel-label" style="color:#888">Partager</div>
+         <div class="funnel-bar-track">
+           <div class="funnel-bar-fill" style="width:${sharePct}%;background:#3a7bd5">${shares > 0 ? shares + '  (' + sharePct + '% des résultats)' : ''}</div>
+         </div>
+       </div>`;
 
     // History table
     const days = [...new Set(events.map(e => e.day))].sort((a, b) => b - a);
@@ -169,10 +180,11 @@
       const n3 = count(events, 'next_3', d);
       const n4 = count(events, 'next_4', d);
       const r  = count(events, 'result', d);
+      const sh = count(events, 'share',  d);
       return `<tr>
         <td>#${d}</td>
         <td>${dayToDate(d)}</td>
-        <td>${p}</td><td>${n1}</td><td>${n2}</td><td>${n3}</td><td>${n4}</td><td>${r}</td>
+        <td>${p}</td><td>${n1}</td><td>${n2}</td><td>${n3}</td><td>${n4}</td><td>${r}</td><td style="border-left:1px solid #0f3460;color:#888">${sh}</td>
       </tr>`;
     }).join('');
 

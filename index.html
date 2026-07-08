@@ -1123,6 +1123,7 @@
   }
 
   document.getElementById('share-btn').addEventListener('click', () => {
+    trackEvent('share');
     const total = guesses.reduce((s, g) => s + g.dist, 0);
     function distEmoji(dist) {
       if (dist < 50)  return '🟡';
