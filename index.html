@@ -389,7 +389,6 @@
     <h2>GeoSpot</h2>
     <div class="subtitle" id="overlay-title"></div>
     <div class="date" id="overlay-date"></div>
-    <div id="player-count" style="font-size:0.78rem;color:#888;margin-top:4px;min-height:1.1em"></div>
     <svg viewBox="0 0 200 80" width="200" height="80" style="margin:4px auto 8px;display:block">
       <!-- dashed line guess → target -->
       <line x1="68" y1="50" x2="132" y2="50" stroke="white" stroke-width="2" stroke-dasharray="4 7" stroke-linecap="round" stroke-opacity="0.75"/>
@@ -400,7 +399,8 @@
       <!-- target dot (blue) -->
       <circle cx="132" cy="50" r="6" fill="#70a1ff" stroke="#a8c8ff" stroke-width="2"/>
     </svg>
-    <p>Trouve la ville la plus proche possible de la cible.</p>
+    <p>Trouve une ville aussi proche que possible de la cible.</p>
+    <div id="player-count" style="font-size:0.78rem;color:#aaa;margin-bottom:12px;min-height:1.1em"></div>
     <button id="play-btn" disabled>
       <svg id="map-loader" width="22" height="22" viewBox="0 0 28 28" fill="none">
         <circle cx="14" cy="14" r="11" stroke="#ffffff44" stroke-width="3"/>
