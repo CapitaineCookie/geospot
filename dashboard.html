@@ -80,21 +80,13 @@
     <div id="g-status" style="color:#555;font-size:0.78rem;margin-bottom:16px"></div>
   </div>
 
-  <div class="section">
-    <h2>Villes les plus devinées</h2>
-    <table id="top-cities-table">
-      <thead><tr><th>Ville</th><th>Code INSEE</th><th>Nb guesses</th><th>Distance moy. (km)</th></tr></thead>
-      <tbody id="top-cities-body"></tbody>
-    </table>
+  <div class="day-selector" style="margin-bottom:4px">
+    <button id="g-round-prev">←</button>
+    <span id="g-round-label" style="font-size:0.92rem;color:#ccc"></span>
+    <button id="g-round-next">→</button>
   </div>
-
-  <div class="section" style="margin-top:32px">
-    <h2>Détail par round</h2>
-    <table id="rounds-table">
-      <thead><tr><th>Round</th><th>Nb guesses</th><th>Distance moy. (km)</th></tr></thead>
-      <tbody id="rounds-body"></tbody>
-    </table>
-  </div>
+  <div id="g-round-count" style="font-size:0.78rem;color:#555;margin-bottom:16px"></div>
+  <div id="rounds-sections"></div>
 </div>
 
 <script src="cities.js"></script>
@@ -224,7 +216,8 @@
 
   // ── Guesses tab ──────────────────────────────────────────────────────────
   let currentGuessDay = todayNumber;
-  let guessesLoaded = false;
+  let currentGuessData = [];
+  let currentRound = 1;
 
   async function fetchGuesses(day) {
     const res = await fetch(
@@ -234,35 +227,30 @@
     return res.json();
   }
 
-  function renderGuesses(guesses) {
-    document.getElementById('g-day-label').textContent = 'Défi #' + currentGuessDay + ' — ' + dayToDate(currentGuessDay);
-    document.getElementById('g-prev-btn').disabled = currentGuessDay <= 1;
-    document.getElementById('g-next-btn').disabled = currentGuessDay >= todayNumber;
-    document.getElementById('g-status').textContent = guesses.length + ' guesses ce jour';
-
-    // Top cities
+  function renderRound() {
+    const rGuesses = currentGuessData.filter(g => g.round === currentRound);
     const cityMap = {};
-    guesses.forEach(g => {
+    rGuesses.forEach(g => {
       if (!cityMap[g.city_code]) cityMap[g.city_code] = { count: 0, totalDist: 0 };
       cityMap[g.city_code].count++;
       cityMap[g.city_code].totalDist += g.distance_km;
     });
-    const sorted = Object.entries(cityMap).sort((a, b) => b[1].count - a[1].count).slice(0, 20);
-    document.getElementById('top-cities-body').innerHTML = sorted.map(([code, s]) =>
-      `<tr><td>${cityByCode.get(code) ?? code}</td><td>${code}</td><td>${s.count}</td><td>${Math.round(s.totalDist / s.count)}</td></tr>`
-    ).join('') || '<tr><td colspan="4" style="color:#555">Aucune donnée</td></tr>';
+    const sorted = Object.entries(cityMap).sort((a, b) => b[1].count - a[1].count);
+    const rows = sorted.map(([code, s]) =>
+      `<tr><td>${cityByCode.get(code) ?? code}</td><td>${s.count}</td><td>${Math.round(s.totalDist / s.count)}</td></tr>`
+    ).join('') || '<tr><td colspan="3" style="color:#555">Aucune donnée</td></tr>';
 
-    // By round
-    const roundMap = {};
-    guesses.forEach(g => {
-      if (!roundMap[g.round]) roundMap[g.round] = { count: 0, totalDist: 0 };
-      roundMap[g.round].count++;
-      roundMap[g.round].totalDist += g.distance_km;
-    });
-    document.getElementById('rounds-body').innerHTML = [1,2,3,4,5].map(r => {
-      const s = roundMap[r];
-      return `<tr><td>Round ${r}</td><td>${s ? s.count : 0}</td><td>${s ? Math.round(s.totalDist / s.count) : '—'}</td></tr>`;
-    }).join('');
+    document.getElementById('g-round-label').textContent = 'Round ' + currentRound;
+    document.getElementById('g-round-count').textContent = rGuesses.length + ' guesses';
+    document.getElementById('g-round-prev').disabled = currentRound <= 1;
+    document.getElementById('g-round-next').disabled = currentRound >= 5;
+    document.getElementById('rounds-sections').innerHTML = `
+      <div class="section" style="margin-top:16px">
+        <table>
+          <thead><tr><th>Ville</th><th>Nb guesses</th><th>Distance moy. (km)</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
   }
 
   async function loadGuesses() {
@@ -272,11 +260,16 @@
       document.getElementById('g-status').textContent = 'Erreur : ' + JSON.stringify(data);
       return;
     }
-    renderGuesses(data);
+    currentGuessData = data;
+    currentRound = 1;
+    document.getElementById('g-status').textContent = data.length + ' guesses ce jour';
+    renderRound();
   }
 
   document.getElementById('g-prev-btn').addEventListener('click', () => { currentGuessDay--; loadGuesses(); });
   document.getElementById('g-next-btn').addEventListener('click', () => { currentGuessDay++; loadGuesses(); });
+  document.getElementById('g-round-prev').addEventListener('click', () => { currentRound--; renderRound(); });
+  document.getElementById('g-round-next').addEventListener('click', () => { currentRound++; renderRound(); });
 </script>
 </body>
 </html>
