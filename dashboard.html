@@ -7,7 +7,13 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #1a1a2e; color: #eee; padding: 32px 24px; }
-    h1 { color: #e94560; font-size: 1.6rem; margin-bottom: 24px; }
+    h1 { color: #e94560; font-size: 1.6rem; margin-bottom: 16px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 24px; }
+    .tab-btn { background: #16213e; border: 1px solid #0f3460; color: #aaa; border-radius: 8px; padding: 7px 18px; cursor: pointer; font-size: 0.9rem; }
+    .tab-btn:hover { background: #0f3460; }
+    .tab-btn.active { background: #e94560; border-color: #e94560; color: #fff; font-weight: 600; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
     .big-stat { font-size: 1.1rem; color: #ccc; margin-bottom: 32px; }
     .big-stat strong { color: #fff; font-size: 1.4rem; }
     .day-panel { background: #16213e; border: 1px solid #0f3460; border-radius: 16px; padding: 20px 24px; margin-bottom: 40px; }
@@ -38,6 +44,12 @@
 
 <h1>Dashboard</h1>
 
+<div class="tabs">
+  <button class="tab-btn active" data-tab="events">Événements</button>
+  <button class="tab-btn" data-tab="guesses">Guesses</button>
+</div>
+
+<div id="tab-events" class="tab-panel active">
 <div class="day-panel">
   <div class="day-selector">
     <button id="prev-btn">←</button>
@@ -56,7 +68,36 @@
     <tbody id="history-body"></tbody>
   </table>
 </div>
+</div><!-- end tab-events -->
 
+<div id="tab-guesses" class="tab-panel">
+  <div class="day-panel">
+    <div class="day-selector">
+      <button id="g-prev-btn">←</button>
+      <span id="g-day-label"></span>
+      <button id="g-next-btn">→</button>
+    </div>
+    <div id="g-status" style="color:#555;font-size:0.78rem;margin-bottom:16px"></div>
+  </div>
+
+  <div class="section">
+    <h2>Villes les plus devinées</h2>
+    <table id="top-cities-table">
+      <thead><tr><th>Ville</th><th>Code INSEE</th><th>Nb guesses</th><th>Distance moy. (km)</th></tr></thead>
+      <tbody id="top-cities-body"></tbody>
+    </table>
+  </div>
+
+  <div class="section" style="margin-top:32px">
+    <h2>Détail par round</h2>
+    <table id="rounds-table">
+      <thead><tr><th>Round</th><th>Nb guesses</th><th>Distance moy. (km)</th></tr></thead>
+      <tbody id="rounds-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="cities.js"></script>
 <script>
   const SB_URL = 'https://njnzxcxaekvbonahaxgh.supabase.co';
   const SB_KEY = 'sb_publishable_P-hy_VtGaIT_yi1UKoEGvw_G4S1R1XU';
@@ -154,6 +195,76 @@
   document.getElementById('next-btn').addEventListener('click', () => { currentDay++; render(allEvents); });
 
   load();
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      if (btn.dataset.tab === 'guesses') loadGuesses();
+    });
+  });
+
+  // ── City lookup ──────────────────────────────────────────────────────────
+  const cityByCode = new Map(CITIES_DATA.map(c => [c.code, c.nom]));
+
+  // ── Guesses tab ──────────────────────────────────────────────────────────
+  let currentGuessDay = todayNumber;
+  let guessesLoaded = false;
+
+  async function fetchGuesses(day) {
+    const res = await fetch(
+      SB_URL + '/rest/v1/guesses?select=city_code,round,distance_km&day=eq.' + day + '&limit=5000',
+      { headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY } }
+    );
+    return res.json();
+  }
+
+  function renderGuesses(guesses) {
+    document.getElementById('g-day-label').textContent = 'Défi #' + currentGuessDay + ' — ' + dayToDate(currentGuessDay);
+    document.getElementById('g-prev-btn').disabled = currentGuessDay <= 1;
+    document.getElementById('g-next-btn').disabled = currentGuessDay >= todayNumber;
+    document.getElementById('g-status').textContent = guesses.length + ' guesses ce jour';
+
+    // Top cities
+    const cityMap = {};
+    guesses.forEach(g => {
+      if (!cityMap[g.city_code]) cityMap[g.city_code] = { count: 0, totalDist: 0 };
+      cityMap[g.city_code].count++;
+      cityMap[g.city_code].totalDist += g.distance_km;
+    });
+    const sorted = Object.entries(cityMap).sort((a, b) => b[1].count - a[1].count).slice(0, 20);
+    document.getElementById('top-cities-body').innerHTML = sorted.map(([code, s]) =>
+      `<tr><td>${cityByCode.get(code) ?? code}</td><td>${code}</td><td>${s.count}</td><td>${Math.round(s.totalDist / s.count)}</td></tr>`
+    ).join('') || '<tr><td colspan="4" style="color:#555">Aucune donnée</td></tr>';
+
+    // By round
+    const roundMap = {};
+    guesses.forEach(g => {
+      if (!roundMap[g.round]) roundMap[g.round] = { count: 0, totalDist: 0 };
+      roundMap[g.round].count++;
+      roundMap[g.round].totalDist += g.distance_km;
+    });
+    document.getElementById('rounds-body').innerHTML = [1,2,3,4,5].map(r => {
+      const s = roundMap[r];
+      return `<tr><td>Round ${r}</td><td>${s ? s.count : 0}</td><td>${s ? Math.round(s.totalDist / s.count) : '—'}</td></tr>`;
+    }).join('');
+  }
+
+  async function loadGuesses() {
+    document.getElementById('g-status').textContent = 'Chargement…';
+    const data = await fetchGuesses(currentGuessDay);
+    if (!Array.isArray(data)) {
+      document.getElementById('g-status').textContent = 'Erreur : ' + JSON.stringify(data);
+      return;
+    }
+    renderGuesses(data);
+  }
+
+  document.getElementById('g-prev-btn').addEventListener('click', () => { currentGuessDay--; loadGuesses(); });
+  document.getElementById('g-next-btn').addEventListener('click', () => { currentGuessDay++; loadGuesses(); });
 </script>
 </body>
 </html>

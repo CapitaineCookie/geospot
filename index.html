@@ -863,6 +863,7 @@
     const dist = haversineKm(gLat, gLng, tLat, tLng);
 
     guesses.push({ target, city, dist });
+    trackGuess(city.code, round, dist);
     saveState('guessed');
 
     const gColor = guessColor(dist);
@@ -1424,6 +1425,18 @@
   // ── Supabase analytics ───────────────────────────────────────────────────
   const SB_URL = 'https://njnzxcxaekvbonahaxgh.supabase.co';
   const SB_KEY = 'sb_publishable_P-hy_VtGaIT_yi1UKoEGvw_G4S1R1XU';
+
+  function trackGuess(cityCode, roundNum, distKm) {
+    fetch(SB_URL + '/rest/v1/guesses', {
+      method: 'POST',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ day: dayNumber, round: roundNum + 1, city_code: cityCode, distance_km: Math.round(distKm) }),
+    }).catch(() => {});
+  }
 
   function trackEvent(event) {
     fetch(SB_URL + '/rest/v1/events', {
