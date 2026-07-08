@@ -993,6 +993,7 @@
       saveState('playing');
     } else {
       trackEvent('result');
+      trackScore();
       showResults();
       saveState('results');
     }
@@ -1426,6 +1427,19 @@
   // ── Supabase analytics ───────────────────────────────────────────────────
   const SB_URL = 'https://njnzxcxaekvbonahaxgh.supabase.co';
   const SB_KEY = 'sb_publishable_P-hy_VtGaIT_yi1UKoEGvw_G4S1R1XU';
+
+  function trackScore() {
+    const total = Math.round(guesses.reduce((s, g) => s + g.dist, 0));
+    fetch(SB_URL + '/rest/v1/scores', {
+      method: 'POST',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ day: dayNumber, score: total }),
+    }).catch(() => {});
+  }
 
   function trackGuess(cityCode, roundNum, distKm) {
     fetch(SB_URL + '/rest/v1/guesses', {
