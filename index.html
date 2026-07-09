@@ -933,6 +933,7 @@
     const btn = document.getElementById('action-btn');
     btn.style.display = 'block';
     btn.textContent = round < TOTAL_ROUNDS - 1 ? 'Suivant →' : 'Résultats';
+    if (round === TOTAL_ROUNDS - 1) trackScore();
     actionBtnReady = false;
     setTimeout(() => { actionBtnReady = true; }, 300);
   }
@@ -993,7 +994,6 @@
       saveState('playing');
     } else {
       trackEvent('result');
-      trackScore();
       showResults();
       saveState('results');
     }
@@ -1124,7 +1124,11 @@
   }
 
   document.getElementById('share-btn').addEventListener('click', () => {
-    trackEvent('share');
+    const save = loadSave();
+    if (!save || !save.shared) {
+      trackEvent('share');
+      if (save) { save.shared = true; localStorage.setItem(SAVE_KEY, JSON.stringify(save)); }
+    }
     const total = guesses.reduce((s, g) => s + g.dist, 0);
     function distEmoji(dist) {
       if (dist < 50)  return '🟡';
@@ -1342,9 +1346,12 @@
 
   function searchCities(query) {
     const q = normalize(query);
+    const articlePrefix = /^(le |la |les |l')/;
     const byName = new Map();
     for (const city of CITIES_DATA) {
-      if (normalize(city.nom).startsWith(q)) {
+      const norm = normalize(city.nom);
+      const normStripped = norm.replace(articlePrefix, '');
+      if (norm.startsWith(q) || normStripped.startsWith(q)) {
         const key = city.nom;
         if (!byName.has(key)) byName.set(key, []);
         byName.get(key).push(city);
@@ -1468,13 +1475,13 @@
   async function loadPlayerCount() {
     try {
       const res = await fetch(
-        SB_URL + '/rest/v1/events?select=id&event=eq.result&day=eq.' + dayNumber,
+        SB_URL + '/rest/v1/scores?select=id&day=eq.' + dayNumber,
         { headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Prefer': 'count=exact' } }
       );
       const count = parseInt(res.headers.get('content-range')?.split('/')[1] || '0', 10);
       if (count > 0) {
         document.getElementById('player-count').textContent =
-          count + ' joueur' + (count > 1 ? 's' : '') + ' ' + (count > 1 ? 'ont' : 'a') + ' joué aujourd\'hui';
+          count + ' personne' + (count > 1 ? 's' : '') + ' ' + (count > 1 ? 'ont' : 'a') + ' joué aujourd\'hui';
       }
     } catch (e) {}
   }

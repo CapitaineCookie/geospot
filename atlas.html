@@ -347,9 +347,12 @@
 
   function searchCities(query) {
     const q = normalize(query);
+    const articlePrefix = /^(le |la |les |l')/;
     const byName = new Map();
     for (const city of CITIES_DATA) {
-      if (normalize(city.nom).startsWith(q)) {
+      const norm = normalize(city.nom);
+      const normStripped = norm.replace(articlePrefix, '');
+      if (norm.startsWith(q) || normStripped.startsWith(q)) {
         const key = city.nom;
         if (!byName.has(key)) byName.set(key, []);
         byName.get(key).push(city);
