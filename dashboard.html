@@ -8,30 +8,29 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #1a1a2e; color: #eee; padding: 32px 24px; }
     h1 { color: #e94560; font-size: 1.6rem; margin-bottom: 16px; }
+    .day-selector { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .day-selector button { background: #16213e; border: 1px solid #0f3460; color: #eee; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 0.88rem; }
+    .day-selector button:hover:not(:disabled) { background: #0f3460; }
+    .day-selector button:disabled { color: #444; border-color: #222; cursor: default; }
+    .day-selector span { font-size: 0.92rem; color: #ccc; }
     .tabs { display: flex; gap: 8px; margin-bottom: 24px; }
     .tab-btn { background: #16213e; border: 1px solid #0f3460; color: #aaa; border-radius: 8px; padding: 7px 18px; cursor: pointer; font-size: 0.9rem; }
     .tab-btn:hover { background: #0f3460; }
     .tab-btn.active { background: #e94560; border-color: #e94560; color: #fff; font-weight: 600; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
-    .big-stat { font-size: 1.1rem; color: #ccc; margin-bottom: 32px; }
+    .big-stat { font-size: 1.1rem; color: #ccc; }
     .big-stat strong { color: #fff; font-size: 1.4rem; }
-    .day-panel { background: #16213e; border: 1px solid #0f3460; border-radius: 16px; padding: 20px 24px; margin-bottom: 40px; }
-    .day-selector { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-    .day-selector button { background: #1a1a2e; border: 1px solid #0f3460; color: #eee; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 0.88rem; }
-    .day-selector button:hover:not(:disabled) { background: #0f3460; }
-    .day-selector button:disabled { color: #444; border-color: #222; cursor: default; }
-    .day-selector span { font-size: 0.92rem; color: #ccc; }
     #status { color: #555; font-size: 0.78rem; margin-bottom: 16px; }
 
     /* Funnel chart */
     .funnel { display: flex; flex-direction: column; gap: 10px; max-width: 500px; }
     .funnel-row { display: flex; align-items: center; gap: 12px; }
-    .funnel-label { font-size: 0.82rem; color: #aaa; width: 130px; flex-shrink: 0; text-align: right; }
+    .funnel-label { font-size: 0.82rem; color: #aaa; width: 90px; flex-shrink: 0; text-align: right; }
     .funnel-bar-track { flex: 1; background: #0f3460; border-radius: 6px; height: 28px; overflow: hidden; }
     .funnel-bar-fill { height: 100%; background: #e94560; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; font-size: 0.8rem; font-weight: 700; color: #fff; white-space: nowrap; transition: width 0.5s ease; min-width: 2px; }
 
-    /* History table */
+    /* Tables */
     .section { margin-top: 40px; }
     h2 { font-size: 0.85rem; color: #666; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
     table { width: 100%; border-collapse: collapse; background: #16213e; border-radius: 14px; overflow: hidden; border: 1px solid #0f3460; }
@@ -44,57 +43,44 @@
 
 <h1>Dashboard</h1>
 
+<div class="day-selector">
+  <button id="prev-btn">←</button>
+  <span id="day-label"></span>
+  <button id="next-btn">→</button>
+</div>
+
 <div class="tabs">
-  <button class="tab-btn active" data-tab="events">Événements</button>
+  <button class="tab-btn active" data-tab="events">Events</button>
   <button class="tab-btn" data-tab="guesses">Guesses</button>
+  <button class="tab-btn" data-tab="scores">Scores</button>
 </div>
 
 <div id="tab-events" class="tab-panel active">
-<div class="day-panel">
-  <div class="day-selector">
-    <button id="prev-btn">←</button>
-    <span id="day-label"></span>
-    <button id="next-btn">→</button>
-  </div>
   <div id="status"></div>
-  <div class="big-stat" id="big-stat"></div>
+  <div style="border-left:3px solid #e94560;padding:8px 16px;margin-bottom:32px">
+    <div class="big-stat" id="big-stat"></div>
+  </div>
+  <div style="border-top:1px solid #0f3460;margin:10px 0;max-width:500px"></div>
   <div class="funnel" id="funnel"></div>
 </div>
 
-<div class="section">
-  <h2>Historique par jour</h2>
-  <table id="history-table">
-    <thead><tr><th>Jour</th><th>Date</th><th>Jouer</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>Résultats</th><th style="border-left:1px solid #0f3460;color:#888">Partager</th></tr></thead>
-    <tbody id="history-body"></tbody>
-  </table>
-</div>
-</div><!-- end tab-events -->
-
 <div id="tab-guesses" class="tab-panel">
-  <div class="day-panel">
-    <div class="day-selector">
-      <button id="g-prev-btn">←</button>
-      <span id="g-day-label"></span>
-      <button id="g-next-btn">→</button>
-    </div>
-    <div id="g-status" style="color:#555;font-size:0.78rem;margin-bottom:16px"></div>
+  <div class="tabs" style="margin-bottom:16px" id="round-tabs">
+    <button class="tab-btn active" data-round="1">R1</button>
+    <button class="tab-btn" data-round="2">R2</button>
+    <button class="tab-btn" data-round="3">R3</button>
+    <button class="tab-btn" data-round="4">R4</button>
+    <button class="tab-btn" data-round="5">R5</button>
   </div>
-
-  <div class="day-selector" style="margin-bottom:4px">
-    <button id="g-round-prev">←</button>
-    <span id="g-round-label" style="font-size:0.92rem;color:#ccc"></span>
-    <button id="g-round-next">→</button>
-  </div>
-  <div id="g-round-count" style="font-size:0.78rem;color:#555;margin-bottom:16px"></div>
   <div id="rounds-sections"></div>
+</div>
 
-  <div class="section" style="margin-top:32px">
-    <h2>Scores du jour</h2>
-    <table id="scores-table">
-      <thead><tr><th>#</th><th>Score (km)</th></tr></thead>
-      <tbody id="scores-body"></tbody>
-    </table>
-  </div>
+<div id="tab-scores" class="tab-panel">
+  <div id="s-status" style="color:#555;font-size:0.78rem;margin-bottom:16px"></div>
+  <table id="scores-table">
+    <thead><tr><th>#</th><th>Score (km)</th></tr></thead>
+    <tbody id="scores-body"></tbody>
+  </table>
 </div>
 
 <script src="cities.js"></script>
@@ -113,6 +99,14 @@
     return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
 
+  function updateDaySelector() {
+    document.getElementById('day-label').textContent = 'Défi #' + currentDay + ' — ' + dayToDate(currentDay);
+    document.getElementById('prev-btn').disabled = currentDay <= 1;
+    document.getElementById('next-btn').disabled = currentDay >= todayNumber;
+  }
+
+  // ── Events tab ───────────────────────────────────────────────────────────
+
   async function fetchEvents() {
     const res = await fetch(SB_URL + '/rest/v1/events?select=event,day,created_at&order=created_at.desc&limit=5000', {
       headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
@@ -124,23 +118,18 @@
     return events.filter(e => e.event === event && e.day === day).length;
   }
 
-  function render(events) {
-    document.getElementById('day-label').textContent = 'Défi #' + currentDay + ' — ' + dayToDate(currentDay);
-    document.getElementById('prev-btn').disabled = currentDay <= 1;
-    document.getElementById('next-btn').disabled = currentDay >= todayNumber;
+  let allEvents = [];
 
-    const plays   = count(events, 'play',   currentDay);
-    const next1   = count(events, 'next_1', currentDay);
-    const next2   = count(events, 'next_2', currentDay);
-    const next3   = count(events, 'next_3', currentDay);
-    const next4   = count(events, 'next_4', currentDay);
-    const results = count(events, 'result', currentDay);
+  function renderEvents() {
+    const plays   = count(allEvents, 'play',   currentDay);
+    const next1   = count(allEvents, 'next_1', currentDay);
+    const next2   = count(allEvents, 'next_2', currentDay);
+    const next3   = count(allEvents, 'next_3', currentDay);
+    const next4   = count(allEvents, 'next_4', currentDay);
+    const results = count(allEvents, 'result', currentDay);
+    const shares  = count(allEvents, 'share',  currentDay);
 
-    // Big stat
     document.getElementById('big-stat').innerHTML = 'Parties jouées : <strong>' + results + '</strong>';
-
-    // Funnel chart
-    const shares  = count(events, 'share',  currentDay);
 
     const mainSteps = [
       { label: 'Jouer',      n: plays },
@@ -171,59 +160,21 @@
          </div>
        </div>`;
 
-    // History table
-    const days = [...new Set(events.map(e => e.day))].sort((a, b) => b - a);
-    document.getElementById('history-body').innerHTML = days.map(d => {
-      const p  = count(events, 'play',   d);
-      const n1 = count(events, 'next_1', d);
-      const n2 = count(events, 'next_2', d);
-      const n3 = count(events, 'next_3', d);
-      const n4 = count(events, 'next_4', d);
-      const r  = count(events, 'result', d);
-      const sh = count(events, 'share',  d);
-      return `<tr>
-        <td>#${d}</td>
-        <td>${dayToDate(d)}</td>
-        <td>${p}</td><td>${n1}</td><td>${n2}</td><td>${n3}</td><td>${n4}</td><td>${r}</td><td style="border-left:1px solid #0f3460;color:#888">${sh}</td>
-      </tr>`;
-    }).join('');
-
-    document.getElementById('status').textContent = events.length + ' événements au total';
   }
 
-  let allEvents = [];
-
-  async function load() {
+  async function loadEvents() {
     const data = await fetchEvents();
     if (!Array.isArray(data)) {
       document.getElementById('status').textContent = 'Erreur : ' + JSON.stringify(data);
       return;
     }
     allEvents = data;
-    render(allEvents);
+    renderEvents();
   }
 
-  document.getElementById('prev-btn').addEventListener('click', () => { currentDay--; render(allEvents); });
-  document.getElementById('next-btn').addEventListener('click', () => { currentDay++; render(allEvents); });
-
-  load();
-
-  // ── Tabs ─────────────────────────────────────────────────────────────────
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-      if (btn.dataset.tab === 'guesses') loadGuesses();
-    });
-  });
-
-  // ── City lookup ──────────────────────────────────────────────────────────
-  const cityByCode = new Map(CITIES_DATA.map(c => [c.code, c.nom]));
-
   // ── Guesses tab ──────────────────────────────────────────────────────────
-  let currentGuessDay = todayNumber;
+
+  const cityByCode = new Map(CITIES_DATA.map(c => [c.code, c.nom]));
   let currentGuessData = [];
   let currentRound = 1;
 
@@ -248,10 +199,9 @@
       `<tr><td>${cityByCode.get(code) ?? code}</td><td>${s.count}</td><td>${Math.round(s.totalDist / s.count)}</td></tr>`
     ).join('') || '<tr><td colspan="3" style="color:#555">Aucune donnée</td></tr>';
 
-    document.getElementById('g-round-label').textContent = 'Round ' + currentRound;
-    document.getElementById('g-round-count').textContent = rGuesses.length + ' guesses';
-    document.getElementById('g-round-prev').disabled = currentRound <= 1;
-    document.getElementById('g-round-next').disabled = currentRound >= 5;
+    document.querySelectorAll('#round-tabs .tab-btn').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.round) === currentRound);
+    });
     document.getElementById('rounds-sections').innerHTML = `
       <div class="section" style="margin-top:16px">
         <table>
@@ -269,33 +219,62 @@
     return res.json();
   }
 
-  function renderScores(scores) {
-    document.getElementById('scores-body').innerHTML = scores.map((s, i) =>
+  async function loadGuesses() {
+    const guessData = await fetchGuesses(currentDay);
+    if (!Array.isArray(guessData)) return;
+    currentGuessData = guessData;
+    currentRound = 1;
+    renderRound();
+  }
+
+  async function loadScores() {
+    document.getElementById('s-status').textContent = '';
+    const scoreData = await fetchScores(currentDay);
+    if (!Array.isArray(scoreData)) {
+      document.getElementById('s-status').textContent = 'Erreur : ' + JSON.stringify(scoreData);
+      return;
+    }
+    document.getElementById('scores-body').innerHTML = scoreData.map((s, i) =>
       `<tr><td>${i + 1}</td><td>${s.score}</td></tr>`
     ).join('') || '<tr><td colspan="2" style="color:#555">Aucune donnée</td></tr>';
   }
 
-  async function loadGuesses() {
-    document.getElementById('g-status').textContent = 'Chargement…';
-    const [guessData, scoreData] = await Promise.all([
-      fetchGuesses(currentGuessDay),
-      fetchScores(currentGuessDay),
-    ]);
-    if (!Array.isArray(guessData)) {
-      document.getElementById('g-status').textContent = 'Erreur : ' + JSON.stringify(guessData);
-      return;
-    }
-    currentGuessData = guessData;
-    currentRound = 1;
-    document.getElementById('g-status').textContent = guessData.length + ' guesses ce jour';
-    renderRound();
-    renderScores(Array.isArray(scoreData) ? scoreData : []);
+  // ── Day navigation ───────────────────────────────────────────────────────
+
+  let activeTab = 'events';
+
+  function onDayChange() {
+    updateDaySelector();
+    if (activeTab === 'events') renderEvents();
+    else if (activeTab === 'guesses') loadGuesses();
+    else if (activeTab === 'scores') loadScores();
   }
 
-  document.getElementById('g-prev-btn').addEventListener('click', () => { currentGuessDay--; loadGuesses(); });
-  document.getElementById('g-next-btn').addEventListener('click', () => { currentGuessDay++; loadGuesses(); });
-  document.getElementById('g-round-prev').addEventListener('click', () => { currentRound--; renderRound(); });
-  document.getElementById('g-round-next').addEventListener('click', () => { currentRound++; renderRound(); });
+  document.getElementById('prev-btn').addEventListener('click', () => { currentDay--; onDayChange(); });
+  document.getElementById('next-btn').addEventListener('click', () => { currentDay++; onDayChange(); });
+
+  document.querySelectorAll('#round-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { currentRound = parseInt(btn.dataset.round); renderRound(); });
+  });
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────
+
+  document.querySelectorAll('.tabs:not(#round-tabs) .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tabs:not(#round-tabs) .tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      activeTab = btn.dataset.tab;
+      if (activeTab === 'guesses') loadGuesses();
+      else if (activeTab === 'scores') loadScores();
+    });
+  });
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+
+  updateDaySelector();
+  loadEvents();
 </script>
 </body>
 </html>
