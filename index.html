@@ -379,7 +379,7 @@
     #leaderboard-rows {
       overflow-y: auto;
       overflow-x: hidden;
-      max-height: 155px;
+      max-height: 135px;
       padding-right: 9px;
       padding-left: 6px;
       margin-right: -5px;
@@ -387,6 +387,7 @@
       scrollbar-width: thin;
       scrollbar-color: #555 transparent;
       -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
     }
     #leaderboard-rows::-webkit-scrollbar { width: 4px; }
     #leaderboard-rows::-webkit-scrollbar-track { background: transparent; }
@@ -1203,6 +1204,9 @@
   document.querySelector('#leaderboard-panel .panel-title').addEventListener('click', () => {
     document.getElementById('leaderboard-panel').classList.toggle('collapsed');
   });
+
+  document.getElementById('leaderboard-rows').addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  document.getElementById('leaderboard-rows').addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
 
   // ── Share ─────────────────────────────────────────────────────────────────
   function buildShareFragment() {
