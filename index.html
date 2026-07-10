@@ -336,6 +336,81 @@
       color: #888;
     }
     #score-total strong { color: #eee; }
+
+    /* Leaderboard panel */
+    #leaderboard-panel {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      width: 155px;
+      background: rgba(22, 33, 62, 0.88);
+      border: 1px solid #0f3460;
+      border-radius: 14px;
+      padding: 10px 12px;
+      z-index: 800;
+      backdrop-filter: blur(6px);
+      visibility: hidden;
+    }
+    #leaderboard-panel.visible { visibility: visible; }
+    #leaderboard-panel .panel-title {
+      font-size: 0.72rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #leaderboard-panel .panel-title::after {
+      content: '▲';
+      font-size: 0.6rem;
+      color: #555;
+      transition: transform 0.2s;
+    }
+    #leaderboard-panel.collapsed .panel-title::after {
+      transform: rotate(180deg);
+    }
+    #leaderboard-panel.collapsed #leaderboard-rows {
+      display: none;
+    }
+    #leaderboard-rows {
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 9px;
+      padding-left: 6px;
+      margin-right: -5px;
+      margin-left: -6px;
+      scrollbar-width: thin;
+      scrollbar-color: #555 transparent;
+    }
+    #leaderboard-rows::-webkit-scrollbar { width: 4px; }
+    #leaderboard-rows::-webkit-scrollbar-track { background: transparent; }
+    #leaderboard-rows::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+    .lb-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px solid #0f3460;
+      font-size: 0.82rem;
+    }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-row .lb-rank { color: #ccc; font-size: 0.82rem; flex-shrink: 0; margin-right: 6px; }
+    .lb-row .lb-score { font-weight: 700; font-size: 0.78rem; color: #eee; }
+    .lb-row.lb-me { background: rgba(70, 130, 180, 0.25); border-radius: 4px; padding: 2px 6px; margin: 2px -6px; }
+    #leaderboard-rank-label {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid #0f3460;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      color: #888;
+    }
+    #leaderboard-rank-label span { color: #eee; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -353,6 +428,12 @@
     <div id="score-rows"></div>
     <div id="score-total">Total <strong id="score-total-val">0 km</strong></div>
     <button id="share-btn">Partager</button>
+  </div>
+  <!-- Leaderboard panel -->
+  <div id="leaderboard-panel">
+    <div class="panel-title">Classement</div>
+    <div id="leaderboard-rows"></div>
+    <div id="leaderboard-rank-label"></div>
   </div>
 </div>
 
@@ -595,6 +676,7 @@
   let round = 0;
   let targets = [];   // chosen cities for today
   let guesses = [];   // {city, dist} per round
+  let trackScorePromise = null;
   let guessMarker = null;
   let targetMarker = null;
   let roundLayers = [];  // all markers/lines added during a round
@@ -933,7 +1015,7 @@
     const btn = document.getElementById('action-btn');
     btn.style.display = 'block';
     btn.textContent = round < TOTAL_ROUNDS - 1 ? 'Suivant →' : 'Résultats';
-    if (round === TOTAL_ROUNDS - 1) trackScore();
+    if (round === TOTAL_ROUNDS - 1) trackScorePromise = trackScore();
     actionBtnReady = false;
     setTimeout(() => { actionBtnReady = true; }, 300);
   }
@@ -1025,6 +1107,8 @@
 
     // Mark all dots as done
     document.querySelectorAll('.round-dot').forEach(d => { d.classList.remove('current'); d.classList.add('done'); });
+
+    loadLeaderboard();
   }
 
   // ── Restore session ───────────────────────────────────────────────────────
@@ -1060,7 +1144,8 @@
       document.getElementById('bottom-bar').style.display = 'none';
       hideKmDisplay();
       document.getElementById('share-btn').classList.add('visible');
-  
+      loadLeaderboard();
+
     } else if (save.phase === 'guessed') {
       // Replay previous rounds into guesses array only (no markers)
       save.guesses.forEach((sg, i) => {
@@ -1111,6 +1196,10 @@
   // ── Share ─────────────────────────────────────────────────────────────────
   document.querySelector('#score-panel .panel-title').addEventListener('click', () => {
     document.getElementById('score-panel').classList.toggle('collapsed');
+  });
+
+  document.querySelector('#leaderboard-panel .panel-title').addEventListener('click', () => {
+    document.getElementById('leaderboard-panel').classList.toggle('collapsed');
   });
 
   // ── Share ─────────────────────────────────────────────────────────────────
@@ -1224,6 +1313,24 @@
     const parsed = parseSharedFragment();
     if (!parsed) return false;
     const { sharedDay, guessIndices } = parsed;
+
+    // If this is the player's own link, redirect to their results instead
+    try {
+      const raw = localStorage.getItem('geospot_save');
+      if (raw) {
+        const save = JSON.parse(raw);
+        if (save.day === dayNumber && save.phase === 'results' && sharedDay === dayNumber) {
+          const dayPart = dayNumber.toString(36);
+          const idxPart = save.guesses.map(g => CITIES_DATA.findIndex(c => c.code === g.cityCode).toString(36).padStart(3, '0')).join('');
+          const ownFragment = dayPart + idxPart;
+          if (location.hash === '#s=' + ownFragment) {
+            history.replaceState(null, '', location.pathname);
+            restoreSession();
+            return true;
+          }
+        }
+      }
+    } catch (e) {}
 
     // Check if the player has already completed today's challenge
     const isSharedToday = (sharedDay === dayNumber);
@@ -1437,7 +1544,7 @@
 
   function trackScore() {
     const total = Math.round(guesses.reduce((s, g) => s + g.dist, 0));
-    fetch(SB_URL + '/rest/v1/scores', {
+    return fetch(SB_URL + '/rest/v1/scores', {
       method: 'POST',
       headers: {
         'apikey': SB_KEY,
@@ -1470,6 +1577,65 @@
       },
       body: JSON.stringify({ event, day: dayNumber }),
     }).catch(() => {});
+  }
+
+  async function loadLeaderboard() {
+    if (trackScorePromise) await trackScorePromise;
+    const myScore = Math.round(guesses.reduce((s, g) => s + g.dist, 0));
+    try {
+      const CACHE_KEY = 'geospot_lb_' + dayNumber;
+      const CACHE_TTL = 10 * 1000;
+      let data;
+      try {
+        const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+        if (cached && Date.now() - cached.ts < CACHE_TTL) {
+          data = cached.data;
+        }
+      } catch (e) {}
+      if (!data) {
+        const res = await fetch(
+          SB_URL + '/rest/v1/scores?select=score&day=eq.' + dayNumber + '&order=score.asc',
+          { headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY } }
+        );
+        data = await res.json();
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch (e) {}
+      }
+      if (!Array.isArray(data) || data.length === 0) return;
+
+      const myIndex = data.findIndex(s => s.score === myScore);
+      const myRank = myIndex === -1 ? null : myIndex + 1;
+
+      const rows = data.map((s, i) => {
+        const isMe = i === myIndex;
+        const scoreColor = s.score < 250 ? COLOR_GOLD : s.score < 750 ? COLOR_SILVER : COLOR_BRONZE;
+        return '<div class="lb-row' + (isMe ? ' lb-me' : '') + '">' +
+          '<span class="lb-rank">#' + (i + 1) + '</span>' +
+          '<span class="lb-score" style="color:' + scoreColor + '">' + s.score + ' km</span>' +
+          '</div>';
+      }).join('');
+
+      const container = document.getElementById('leaderboard-rows');
+      container.innerHTML = rows;
+
+      if (myRank !== null) {
+        document.getElementById('leaderboard-rank-label').innerHTML =
+          'Rang <span>' + myRank + ' / ' + data.length + '</span>';
+      }
+
+      document.getElementById('leaderboard-panel').classList.add('visible');
+
+      // Cap to 5 rows then center on player
+      const firstRow = container.querySelector('.lb-row');
+      if (firstRow) {
+        container.style.height = (firstRow.offsetHeight * 5) + 'px';
+      }
+      if (myRank !== null) {
+        const meEl = container.querySelector('.lb-me');
+        if (meEl) {
+          container.scrollTop = Math.max(0, meEl.offsetTop - meEl.offsetHeight * 2);
+        }
+      }
+    } catch (e) {}
   }
 
   async function loadPlayerCount() {

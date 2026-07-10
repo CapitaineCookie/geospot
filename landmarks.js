@@ -40,7 +40,6 @@ const LANDMARKS = [
   [50.9523,  1.8690,  "Calais"],
   [51.0183,  2.3431,  "Dunkerque"],
   [43.3481,  3.2342,  "Béziers"],
-  [43.4844, -1.4611,  "Bayonne"],
   [45.9024,  6.1264,  "Annecy"],
   [48.2924,  4.0761,  "Troyes"],
   [47.9982, -4.0972,  "Quimper"],
@@ -54,7 +53,6 @@ const LANDMARKS = [
   [49.3718,  6.1443,  "Thionville"],
   // Additional 48
   [48.8039,  2.1191,  "Versailles"],
-  [48.9378,  2.3657,  "Saint-Denis"],
   [43.5454,  7.0152,  "Cannes"],
   [46.5846,  0.3715,  "Poitiers"],
   [47.2768, -2.2392,  "Saint-Nazaire"],

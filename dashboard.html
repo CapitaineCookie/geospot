@@ -194,7 +194,9 @@
       cityMap[g.city_code].count++;
       cityMap[g.city_code].totalDist += g.distance_km;
     });
-    const sorted = Object.entries(cityMap).sort((a, b) => b[1].count - a[1].count);
+    const sorted = Object.entries(cityMap).sort((a, b) =>
+      b[1].count - a[1].count || (a[1].totalDist / a[1].count) - (b[1].totalDist / b[1].count)
+    );
     const rows = sorted.map(([code, s]) =>
       `<tr><td>${cityByCode.get(code) ?? code}</td><td>${s.count}</td><td>${Math.round(s.totalDist / s.count)}</td></tr>`
     ).join('') || '<tr><td colspan="3" style="color:#555">Aucune donnée</td></tr>';
