@@ -379,12 +379,14 @@
     #leaderboard-rows {
       overflow-y: auto;
       overflow-x: hidden;
+      max-height: 155px;
       padding-right: 9px;
       padding-left: 6px;
       margin-right: -5px;
       margin-left: -6px;
       scrollbar-width: thin;
       scrollbar-color: #555 transparent;
+      -webkit-overflow-scrolling: touch;
     }
     #leaderboard-rows::-webkit-scrollbar { width: 4px; }
     #leaderboard-rows::-webkit-scrollbar-track { background: transparent; }
@@ -1624,11 +1626,6 @@
 
       document.getElementById('leaderboard-panel').classList.add('visible');
 
-      // Cap to 5 rows then center on player
-      const firstRow = container.querySelector('.lb-row');
-      if (firstRow) {
-        container.style.height = (firstRow.offsetHeight * 5) + 'px';
-      }
       if (myRank !== null) {
         const meEl = container.querySelector('.lb-me');
         if (meEl) {
