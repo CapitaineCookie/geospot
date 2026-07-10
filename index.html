@@ -473,13 +473,13 @@
     <h2>GeoSpot</h2>
     <div class="subtitle" id="overlay-title"></div>
     <div class="date" id="overlay-date"></div>
-    <svg viewBox="0 0 200 80" width="200" height="80" style="margin:4px auto 8px;display:block">
+    <svg viewBox="0 0 200 80" width="200" height="80" style="margin:0 auto 4px;display:block">
       <!-- dashed line guess → target -->
       <line x1="68" y1="50" x2="132" y2="50" stroke="white" stroke-width="2" stroke-dasharray="4 7" stroke-linecap="round" stroke-opacity="0.75"/>
       <!-- guess dot (gold) -->
       <circle cx="68" cy="50" r="6" fill="#f5a623" stroke="#f9c87a" stroke-width="2"/>
-      <!-- Bordeaux label above guess dot -->
-      <text x="68" y="37" text-anchor="middle" fill="#f5a623" font-size="11" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,sans-serif">Bordeaux</text>
+      <!-- 25 km label centered above the dashed line -->
+      <text x="100" y="37" text-anchor="middle" fill="#f5a623" font-size="11" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,sans-serif">25 km</text>
       <!-- target dot (blue) -->
       <circle cx="132" cy="50" r="6" fill="#70a1ff" stroke="#a8c8ff" stroke-width="2"/>
     </svg>
