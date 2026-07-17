@@ -29,6 +29,7 @@ function pickTargets(dayOffset) {
   while (picked.length < TOTAL_ROUNDS) {
     const idx = Math.floor(rng() * CITIES_DATA.length);
     if (used.has(idx)) continue;
+    if (parseInt(CITIES_DATA[idx].code.slice(0, 2)) >= 97) continue;
     const [lon, lat] = CITIES_DATA[idx].centre.coordinates;
     const tooClose = picked.some(c => {
       const [lo, la] = c.centre.coordinates;

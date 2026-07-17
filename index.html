@@ -726,6 +726,7 @@
     while (picked.length < TOTAL_ROUNDS) {
       const idx = Math.floor(rng() * CITIES_DATA.length);
       if (used.has(idx)) continue;
+      if (parseInt(CITIES_DATA[idx].code.slice(0, 2)) >= 97) continue;
       const [lon, lat] = CITIES_DATA[idx].centre.coordinates;
       const tooClose = picked.some(c => {
         const [lo, la] = c.centre.coordinates;
@@ -949,6 +950,7 @@
 
     guesses.push({ target, city, dist });
     trackGuess(city.code, round, dist);
+    if (round === TOTAL_ROUNDS - 1) trackScorePromise = trackScore();
     saveState('guessed');
 
     const gColor = guessColor(dist);
@@ -1018,7 +1020,6 @@
     const btn = document.getElementById('action-btn');
     btn.style.display = 'block';
     btn.textContent = round < TOTAL_ROUNDS - 1 ? 'Suivant →' : 'Résultats';
-    if (round === TOTAL_ROUNDS - 1) trackScorePromise = trackScore();
     actionBtnReady = false;
     setTimeout(() => { actionBtnReady = true; }, 300);
   }
