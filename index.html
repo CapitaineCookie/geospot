@@ -313,6 +313,9 @@
     .score-row:last-child { border-bottom: none; }
     .score-row .sr-city { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
     .score-row .sr-dist { font-weight: 700; font-size: 0.78rem; flex-shrink: 0; margin-left: 6px; }
+    .score-row[data-round] { cursor: pointer; transition: background 150ms; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
+    .score-row[data-round]:hover { background: rgba(255,255,255,0.06); }
+    .score-row-selected { background: rgba(112,161,255,0.15) !important; }
 
     .dot-label {
       position: absolute;
@@ -948,7 +951,7 @@
     const [gLng, gLat] = city.centre.coordinates;
     const dist = haversineKm(gLat, gLng, tLat, tLng);
 
-    guesses.push({ target, city, dist });
+    guesses.push({ target, city, dist, landmarks: [] });
     trackGuess(city.code, round, dist);
     if (round === TOTAL_ROUNDS - 1) trackScorePromise = trackScore();
     saveState('guessed');
@@ -983,6 +986,7 @@
           .filter(lm => lm.d < dist)
           .sort((a, b) => a.d - b.d)
           .slice(0, 2);
+        guesses[guesses.length - 1].landmarks = closer;
 
         if (closer.length === 0) {
           showActionBtn();
@@ -1055,13 +1059,16 @@
     panel.classList.add('visible');
     document.getElementById('panel-round-label').textContent = 'Manche ' + guesses.length + ' / ' + TOTAL_ROUNDS;
 
-    const rows = guesses.map(g =>
-      '<div class="score-row">' +
+    const rows = guesses.map((g, i) =>
+      '<div class="score-row" data-round="' + i + '">' +
         '<span class="sr-city">' + escapeHtml(g.city.nom) + '</span>' +
         '<span class="sr-dist" style="color:' + guessColor(g.dist) + '">' + Math.round(g.dist) + ' km</span>' +
       '</div>'
     ).join('');
     document.getElementById('score-rows').innerHTML = rows;
+    document.querySelectorAll('#score-rows .score-row').forEach((row, j) => {
+      row.classList.toggle('score-row-selected', j === selectedResultRound);
+    });
 
     const total = guesses.reduce((s, g) => s + g.dist, 0);
     const totalEl = document.getElementById('score-total');
@@ -1086,20 +1093,32 @@
   });
 
   // ── Results ───────────────────────────────────────────────────────────────
+  let resultMarkersByRound = []; // array of { target, guess } marker refs per round
+  let resultLandmarkLayers = []; // currently shown landmark layers
+  let resultSelectionRing = null; // white ring on the selected target marker
+  let selectedResultRound = null;
+
   function showResults() {
     // Clear last round's markers
     roundLayers.forEach(l => map.removeLayer(l));
     roundLayers = [];
 
     // Show all 5 target + guess markers with labels and lines
-    guesses.forEach(g => {
+    resultMarkersByRound = [];
+    guesses.forEach((g, i) => {
       const [tLng, tLat] = g.target.centre.coordinates;
       const [gLng, gLat] = g.city.centre.coordinates;
 
-      makeMarker([tLat, tLng], COLOR_TARGET, g.target.nom, false, 'dotsTarget');
-      makeMarker([gLat, gLng], guessColor(g.dist), g.city.nom, true, 'dotsGuess');
+      const tm = makeMarker([tLat, tLng], COLOR_TARGET, g.target.nom, false, 'dotsTarget');
+      const gm = makeMarker([gLat, gLng], guessColor(g.dist), g.city.nom, true, 'dotsGuess');
+      resultMarkersByRound.push({ target: tm, guess: gm });
 
       L.polyline([[gLat, gLng],[tLat, tLng]], { color:'#fff', weight:2, opacity:0.75, dashArray:'3 6', pane:'lines' }).addTo(map);
+
+      tm.on('click', () => selectResultRound(i));
+      gm.on('click', () => selectResultRound(i));
+      if (tm.getElement()) tm.getElement().style.cursor = 'pointer';
+      if (gm.getElement()) gm.getElement().style.cursor = 'pointer';
     });
 
     // Hide bottom bar entirely
@@ -1113,6 +1132,115 @@
     document.querySelectorAll('.round-dot').forEach(d => { d.classList.remove('current'); d.classList.add('done'); });
 
     loadLeaderboard();
+  }
+
+  function clearResultLandmarks(then) {
+    if (resultLandmarkLayers.length === 0) { if (then) then(); return; }
+    const layers = resultLandmarkLayers.slice();
+    resultLandmarkLayers = [];
+    const FADE_MS = 250;
+    const STEPS = 10;
+    // Animate circle markers by shrinking radius; fade label divIcons with CSS opacity
+    layers.forEach(l => {
+      if (typeof l.getRadius === 'function') {
+        // SVG circle marker — shrink radius over FADE_MS
+        const startR = l.getRadius();
+        let step = 0;
+        function tick() {
+          step++;
+          const t = step / STEPS;
+          l.setRadius(Math.max(0, startR * (1 - t)));
+          if (step < STEPS) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      } else {
+        // Polyline or label marker — fade via element opacity if available
+        const el = l.getElement ? l.getElement() : null;
+        if (el) {
+          el.style.transition = 'opacity ' + FADE_MS + 'ms ease';
+          el.style.opacity = '0';
+        }
+      }
+    });
+    setTimeout(() => {
+      layers.forEach(l => map.removeLayer(l));
+      if (then) then();
+    }, FADE_MS + 10);
+  }
+
+  function setSelectionRing(latlng) {
+    const old = resultSelectionRing;
+    resultSelectionRing = null;
+    if (old) {
+      const STEPS = 8;
+      let step = 0;
+      const startR = old.getRadius();
+      (function shrink() {
+        step++;
+        old.setRadius(Math.max(0, startR * (1 - step / STEPS)));
+        if (step < STEPS) requestAnimationFrame(shrink);
+        else map.removeLayer(old);
+      })();
+    }
+    if (!latlng) return;
+    const ring = L.circleMarker(latlng, {
+      radius: 6, color: '#fff', weight: 2.5, opacity: 0.6, fillOpacity: 0, pane: 'lines', interactive: false,
+    }).addTo(map);
+    resultSelectionRing = ring;
+    const TARGET_R = 11, STEPS = 10;
+    let step = 0;
+    (function grow() {
+      step++;
+      ring.setRadius(6 + (TARGET_R - 6) * step / STEPS);
+      if (step < STEPS) requestAnimationFrame(grow);
+    })();
+  }
+
+  function selectResultRound(i, toggleable) {
+    if (selectedResultRound === i) {
+      if (!toggleable) return;
+      selectedResultRound = null;
+      document.querySelectorAll('#score-rows .score-row').forEach(row => row.classList.remove('score-row-selected'));
+      clearResultLandmarks(null);
+      setSelectionRing(null);
+      return;
+    }
+    selectedResultRound = i;
+
+    // Highlight selected row in score panel
+    document.querySelectorAll('#score-rows .score-row').forEach((row, j) => {
+      row.classList.toggle('score-row-selected', j === selectedResultRound);
+    });
+
+    // White ring around the selected target marker
+    const [tLng0, tLat0] = guesses[i].target.centre.coordinates;
+    setSelectionRing([tLat0, tLng0]);
+
+    const targetRound = i;
+    clearResultLandmarks(() => {
+      if (selectedResultRound !== targetRound) return; // user changed selection during fade-out
+      const g = guesses[targetRound];
+      if (!g.landmarks || g.landmarks.length === 0) return;
+      const [tLng, tLat] = g.target.centre.coordinates;
+      g.landmarks.forEach((lm, idx) => {
+        setTimeout(() => {
+          if (selectedResultRound !== targetRound) return; // guard staggered timeouts too
+          const lmLine = animateLine(
+            [tLat, tLng], [lm.lat, lm.lng],
+            { color: '#fff', weight: 1.5, opacity: 0.75, dashArray: '3 6' },
+            700,
+            () => {
+              if (selectedResultRound !== targetRound) { map.removeLayer(lmLine); return; }
+              const lmMarker = makeSuggestedMarker([lm.lat, lm.lng], guessColor(lm.d), lm.name);
+              resultLandmarkLayers.push(lmMarker);
+              if (lmMarker._labelMarker) resultLandmarkLayers.push(lmMarker._labelMarker);
+              popMarker(lmMarker);
+            }
+          );
+          resultLandmarkLayers.push(lmLine);
+        }, idx * 180);
+      });
+    });
   }
 
   // ── Restore session ───────────────────────────────────────────────────────
@@ -1129,16 +1257,27 @@
 
     if (save.phase === 'results') {
       // Replay all guesses as in showResults
+      resultMarkersByRound = [];
       save.guesses.forEach((sg, i) => {
         const target = targets[i];
         const city = cityByCode.get(sg.cityCode);
         if (!target || !city) return;
         const [tLng, tLat] = target.centre.coordinates;
         const [gLng, gLat] = city.centre.coordinates;
-        guesses.push({ target, city, dist: sg.dist });
-        makeMarker([tLat, tLng], COLOR_TARGET, target.nom, false, 'dotsTarget');
-        makeMarker([gLat, gLng], guessColor(sg.dist), city.nom, true, 'dotsGuess');
+        const landmarks = LANDMARKS
+          .map(([lat, lng, name]) => ({ lat, lng, name, d: haversineKm(lat, lng, tLat, tLng) }))
+          .filter(lm => lm.d < sg.dist)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, 2);
+        guesses.push({ target, city, dist: sg.dist, landmarks });
+        const tm = makeMarker([tLat, tLng], COLOR_TARGET, target.nom, false, 'dotsTarget');
+        const gm = makeMarker([gLat, gLng], guessColor(sg.dist), city.nom, true, 'dotsGuess');
+        resultMarkersByRound.push({ target: tm, guess: gm });
         L.polyline([[tLat, tLng], [gLat, gLng]], { color:'#fff', weight:2, opacity:0.75, dashArray:'3 6', pane:'lines' }).addTo(map);
+        tm.on('click', () => selectResultRound(i));
+        gm.on('click', () => selectResultRound(i));
+        if (tm.getElement()) tm.getElement().style.cursor = 'pointer';
+        if (gm.getElement()) gm.getElement().style.cursor = 'pointer';
       });
       round = TOTAL_ROUNDS;
       document.getElementById('score-panel').classList.add('visible');
@@ -1208,6 +1347,13 @@
 
   document.getElementById('leaderboard-rows').addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
   document.getElementById('leaderboard-rows').addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
+
+  document.getElementById('score-rows').addEventListener('click', e => {
+    if (typeof selectResultRound !== 'function') return;
+    const row = e.target.closest('.score-row[data-round]');
+    if (!row) return;
+    selectResultRound(parseInt(row.dataset.round, 10), true);
+  });
 
   // ── Share ─────────────────────────────────────────────────────────────────
   function buildShareFragment() {
