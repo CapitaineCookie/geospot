@@ -721,9 +721,8 @@
     return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
   }
 
-  function pickTargets() {
-    const seed = Math.floor((today - EPOCH) / 86400000);
-    const rng = seededRandom((seed * 2654435761 + 42) ^ 0xdeadbeef);
+  function pickTargetsForDay(dayOffset) {
+    const rng = seededRandom((dayOffset * 2654435761 + 42) ^ 0xdeadbeef);
     const picked = [];
     const used = new Set();
     while (picked.length < TOTAL_ROUNDS) {
@@ -741,6 +740,10 @@
       if (!tooClose) { used.add(idx); picked.push(CITIES_DATA[idx]); }
     }
     return picked;
+  }
+
+  function pickTargets() {
+    return pickTargetsForDay(Math.floor((today - EPOCH) / 86400000));
   }
 
   function lighten(hex, amount = 0.45) {
@@ -1418,23 +1421,7 @@
     const sharedDate = new Date(EPOCH);
     sharedDate.setDate(sharedDate.getDate() + sharedDay - 1);
 
-    const seed = sharedDay - 1;
-    const rng = seededRandom((seed * 2654435761 + 42) ^ 0xdeadbeef);
-    const sharedTargets = [];
-    const used = new Set();
-    while (sharedTargets.length < TOTAL_ROUNDS) {
-      const idx = Math.floor(rng() * CITIES_DATA.length);
-      if (used.has(idx)) continue;
-      const [lon, lat] = CITIES_DATA[idx].centre.coordinates;
-      const tooClose = sharedTargets.some(c => {
-        const [lo, la] = c.centre.coordinates;
-        const dLat = (la - lat) * Math.PI / 180;
-        const dLon = (lo - lon) * Math.PI / 180;
-        const a = Math.sin(dLat/2)**2 + Math.cos(lat*Math.PI/180)*Math.cos(la*Math.PI/180)*Math.sin(dLon/2)**2;
-        return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) < 150;
-      });
-      if (!tooClose) { used.add(idx); sharedTargets.push(CITIES_DATA[idx]); }
-    }
+    const sharedTargets = pickTargetsForDay(sharedDay - 1);
 
     document.getElementById('overlay').classList.add('hidden');
     document.getElementById('bottom-bar').style.visibility = 'hidden';
