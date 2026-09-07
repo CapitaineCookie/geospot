@@ -319,8 +319,9 @@
     .score-row:last-child { border-bottom: none; }
     .score-row .sr-city { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
     .score-row .sr-dist { font-weight: 700; font-size: 0.78rem; flex-shrink: 0; margin-left: 6px; }
-    .score-row[data-round] { cursor: pointer; transition: background 150ms; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
-    .score-row[data-round]:hover { background: rgba(255,255,255,0.06); }
+    .score-row[data-round] { transition: background 150ms; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
+    #score-rows.results-shown .score-row[data-round] { cursor: pointer; }
+    #score-rows.results-shown .score-row[data-round]:hover { background: rgba(255,255,255,0.06); }
     .score-row-selected { background: rgba(112,161,255,0.15) !important; }
 
     .dot-label {
@@ -1074,7 +1075,9 @@
         '<span class="sr-dist" style="color:' + guessColor(g.dist) + '">' + Math.round(g.dist) + ' km</span>' +
       '</div>'
     ).join('');
-    document.getElementById('score-rows').innerHTML = rows;
+    const scoreRowsEl = document.getElementById('score-rows');
+    scoreRowsEl.innerHTML = rows;
+    scoreRowsEl.classList.toggle('results-shown', resultsShown);
     document.querySelectorAll('#score-rows .score-row').forEach((row, j) => {
       row.classList.toggle('score-row-selected', j === selectedResultRound);
     });
@@ -1106,8 +1109,10 @@
   let resultLandmarkLayers = []; // currently shown landmark layers
   let resultSelectionRing = null; // white ring on the selected target marker
   let selectedResultRound = null;
+  let resultsShown = false; // true only once the results screen (all dots visible) is displayed
 
   function showResults() {
+    resultsShown = true;
     // Clear last round's markers
     roundLayers.forEach(l => map.removeLayer(l));
     roundLayers = [];
@@ -1289,6 +1294,7 @@
         if (gm.getElement()) gm.getElement().style.cursor = 'pointer';
       });
       round = TOTAL_ROUNDS;
+      resultsShown = true;
       document.getElementById('score-panel').classList.add('visible');
       updateScorePanel();
       buildRoundDots();
@@ -1358,6 +1364,7 @@
   document.getElementById('leaderboard-rows').addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
 
   document.getElementById('score-rows').addEventListener('click', e => {
+    if (!resultsShown) return;
     if (typeof selectResultRound !== 'function') return;
     const row = e.target.closest('.score-row[data-round]');
     if (!row) return;
