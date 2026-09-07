@@ -55,6 +55,32 @@
     .chart-col-label { font-size: 0.65rem; color: #888; margin-top: 6px; text-align: center; white-space: nowrap; }
     .chart-loading { color: #555; font-size: 0.82rem; }
 
+    /* ── Daily players curve (line chart, no scroll) ── */
+    .curve-chart { width: 100%; height: 248px; position: relative; }
+    .curve-chart svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .curve-line { fill: none; stroke: #3a7bd5; stroke-width: 2; vector-effect: non-scaling-stroke; }
+    .curve-area { fill: rgba(58, 123, 213, 0.15); stroke: none; }
+    .curve-dot { fill: #3a7bd5; }
+    .curve-hit { fill: transparent; cursor: pointer; }
+    .curve-axis { stroke: #0f3460; stroke-width: 1; vector-effect: non-scaling-stroke; }
+    .curve-axis-label { fill: #666; font-size: 10px; }
+    .curve-tooltip {
+      position: absolute;
+      transform: translateY(calc(-100% - 10px));
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.76rem;
+      line-height: 1.4;
+      color: #eee;
+      white-space: nowrap;
+      pointer-events: none;
+      display: none;
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
     /* ── Range buttons ── */
     .range-btn { background: #16213e; border: 1px solid #0f3460; color: #aaa; border-radius: 8px; padding: 6px 16px; cursor: pointer; font-size: 0.85rem; }
     .range-btn:hover:not(.active) { background: #0f3460; }
@@ -100,12 +126,21 @@
       <div class="value" id="gen-total-plays">—</div>
     </div>
 <div class="stat-card">
-      <div class="label">Moy. / jour</div>
+      <div class="label">Moyenne</div>
       <div class="value" id="gen-avg-per-day">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Maximum</div>
+      <div class="value" id="gen-max-per-day">—</div>
     </div>
   </div>
 
   <div class="chart-wrap">
+    <div class="chart-title">Tendance</div>
+    <div class="curve-chart" id="players-curve"></div>
+  </div>
+
+  <div class="chart-wrap" style="margin-top:28px">
     <div class="chart-title">Joueurs par jour</div>
     <div class="chart" id="players-chart"><div class="chart-loading">Chargement…</div></div>
   </div>
@@ -241,7 +276,7 @@
        <div class="funnel-row">
          <div class="funnel-label" style="color:#888">Partager</div>
          <div class="funnel-bar-track">
-           <div class="funnel-bar-fill" style="width:${sharePct}%;background:#5a9be8">${shares > 0 ? shares + '  (' + sharePct + '%)' : ''}</div>
+           <div class="funnel-bar-fill" style="width:${sharePct}%">${shares > 0 ? shares + '  (' + sharePct + '%)' : ''}</div>
          </div>
        </div>`;
   }
@@ -268,13 +303,16 @@
       days = Array.from({ length: todayNumber - first + 1 }, (_, i) => first + i);
     }
 
-    const maxVal = Math.max(...days.map(d => countsByDay[d] || 0), 1);
+    const dayCounts = days.map(d => countsByDay[d] || 0);
+    const rawMax = Math.max(...dayCounts, 0);
+    const maxVal = Math.max(rawMax, 1);
     const totalPlays = days.reduce((s, d) => s + (countsByDay[d] || 0), 0);
     const activeDays = days.filter(d => countsByDay[d] > 0).length;
     const avgPerDay  = activeDays > 0 ? Math.round(totalPlays / activeDays) : 0;
 
     document.getElementById('gen-total-plays').textContent = totalPlays;
     document.getElementById('gen-avg-per-day').textContent = avgPerDay;
+    document.getElementById('gen-max-per-day').textContent = rawMax;
 
     const colMinWidth = days.length <= 7 ? 36 : days.length <= 30 ? 20 : 28;
     document.getElementById('players-chart').innerHTML = days.map(d => {
@@ -286,6 +324,67 @@
         <div class="chart-col-label" style="font-size:${labelSize}">#${d}</div>
       </div>`;
     }).join('');
+
+    renderPlayersCurve(days, dayCounts, maxVal);
+  }
+
+  function renderPlayersCurve(days, dayCounts, maxVal) {
+    const W = 1000, H = 220, padLeft = 34, padRight = 8, padTop = 12, padBottom = 8;
+    const n = dayCounts.length;
+    const usableW = W - padLeft - padRight;
+    const usableH = H - padTop - padBottom;
+    const x = i => n <= 1 ? padLeft + usableW / 2 : padLeft + (i / (n - 1)) * usableW;
+    const y = v => padTop + usableH - (v / maxVal) * usableH;
+
+    const points = dayCounts.map((v, i) => [x(i), y(v)]);
+    const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' ');
+    const areaPath = linePath + ` L${points[points.length - 1][0].toFixed(2)},${H - padBottom} L${padLeft},${H - padBottom} Z`;
+    const dotRadius = n <= 10 ? 4 : n <= 30 ? 2.8 : 1.6;
+    const hitRadius = Math.max(dotRadius, 8);
+
+    const dots = points.map(([px, py], i) => {
+      const d = days[i], v = dayCounts[i];
+      return `<circle class="curve-dot" cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" r="${dotRadius}"></circle>
+        <circle class="curve-hit" cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" r="${hitRadius}"
+          data-date="${dayToDate(d)}" data-challenge="${d}" data-players="${v}"></circle>`;
+    }).join('');
+
+    const yMidVal = Math.round(maxVal / 2);
+
+    document.getElementById('players-curve').innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <line class="curve-axis" x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${H - padBottom}"></line>
+        <line class="curve-axis" x1="${padLeft}" y1="${H - padBottom}" x2="${W - padRight}" y2="${H - padBottom}"></line>
+        <text class="curve-axis-label" x="${padLeft - 6}" y="${padTop + 4}" text-anchor="end">${maxVal}</text>
+        <text class="curve-axis-label" x="${padLeft - 6}" y="${y(yMidVal) + 4}" text-anchor="end">${yMidVal}</text>
+        <text class="curve-axis-label" x="${padLeft - 6}" y="${H - padBottom}" text-anchor="end">0</text>
+        <path class="curve-area" d="${areaPath}"></path>
+        <path class="curve-line" d="${linePath}"></path>
+        ${dots}
+      </svg>
+      <div class="curve-tooltip" id="curve-tooltip"></div>`;
+
+    const svgEl = document.querySelector('#players-curve svg');
+    const tooltip = document.getElementById('curve-tooltip');
+    svgEl.querySelectorAll('.curve-hit').forEach(hit => {
+      hit.addEventListener('mouseenter', () => {
+        const { date, challenge, players } = hit.dataset;
+        tooltip.innerHTML = `<strong>${date}</strong><br>Défi #${challenge}<br>${players} joueur${players === '1' ? '' : 's'}`;
+        tooltip.style.display = 'block';
+        const rect = svgEl.getBoundingClientRect();
+        const wrapRect = document.getElementById('players-curve').getBoundingClientRect();
+        const cx = hit.cx.baseVal.value / W * rect.width + (rect.left - wrapRect.left);
+        const cy = hit.cy.baseVal.value / H * rect.height + (rect.top - wrapRect.top);
+        const th = tooltip.offsetHeight;
+        const fitsAbove = cy - th - 10 >= 0;
+        tooltip.style.transform = fitsAbove ? 'translateY(calc(-100% - 10px))' : 'translateY(10px)';
+        const tw = tooltip.offsetWidth;
+        const left = Math.min(Math.max(cx - tw / 2, 4), wrapRect.width - tw - 4);
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = cy + 'px';
+      });
+      hit.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+    });
   }
 
   document.querySelectorAll('.range-btn').forEach(btn => {
