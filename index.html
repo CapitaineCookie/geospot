@@ -594,7 +594,6 @@
   const fitFrance = fitLatitudes;
 
   let suppressResize = false;
-  let dbgSuppressAutoFit = null; // set by debug panel to a fn() => boolean
   // ResizeObserver fires when #map has a real size — reliable on both desktop and mobile
   new ResizeObserver(() => {
     if (suppressResize) return;
@@ -603,7 +602,6 @@
     // On touch devices, skip when the keyboard is open (map height shrinks)
     if (isTouchDevice && mapEl.clientHeight < SCREEN_H * 0.5) return;
     map.invalidateSize({ animate: false });
-    if (dbgSuppressAutoFit && dbgSuppressAutoFit()) return;
     fitFrance();
   }).observe(document.getElementById('map'));
 
@@ -637,19 +635,12 @@
   map.getPane('lines').style.pointerEvents        = 'none';
   map.getPane('labels').style.pointerEvents       = 'none';
 
-  const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-  let tileLayer = null;
-
-  function mountTileLayer(options) {
-    if (tileLayer) map.removeLayer(tileLayer);
-    tileLayer = L.tileLayer(TILE_URL, Object.assign({
-      attribution: '© <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics',
-      maxZoom: 19,
-    }, options)).addTo(map);
-    return tileLayer;
-  }
-
-  mountTileLayer({}).once('load', () => {
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics',
+    maxZoom: 19,
+    detectRetina: true,
+    keepBuffer: 1,
+  }).once('load', () => {
     const cover = document.getElementById('map-cover');
     if (cover) {
       cover.classList.add('hidden');
@@ -660,103 +651,7 @@
       btn.disabled = false;
       btn.innerHTML = 'Jouer';
     }
-  });
-
-  // ── Debug panel: test tile-quality options live (?debug=1) ─────────────────
-  if (new URLSearchParams(location.search).has('debug')) {
-    const panel = document.createElement('div');
-    panel.id = 'debug-panel';
-    panel.style.cssText = 'position:fixed;top:8px;left:8px;z-index:9999;background:rgba(0,0,0,0.75);' +
-      'color:#fff;padding:8px;border-radius:6px;font:11px/1.4 monospace;max-width:260px;';
-    panel.innerHTML = `
-      <div id="dbg-title" style="margin-bottom:4px;font-weight:bold;cursor:pointer;user-select:none;">▾ Tile debug</div>
-      <div id="dbg-body">
-        <div id="dbg-state" style="margin-bottom:6px;opacity:0.8;"></div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">
-          <button data-opt="retina0">retina off</button>
-          <button data-opt="retina1">retina on</button>
-        </div>
-        <div style="display:flex;gap:4px;margin-bottom:6px;">
-          <button data-opt="snap0">snap 0</button>
-          <button data-opt="snap025">snap .25</button>
-          <button data-opt="snap1">snap 1</button>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;">
-          <button data-opt="zoomdown10">-1</button>
-          <button data-opt="zoomdown">-0.1</button>
-          <button data-opt="zoomup">+0.1</button>
-          <button data-opt="zoomup10">+1</button>
-          <button data-opt="zoomauto">auto-fit</button>
-        </div>
-        <div style="display:flex;margin-top:6px;margin-bottom:6px;">
-          <button data-opt="dragtoggle" style="flex:1;">drag: off</button>
-        </div>
-        <div style="display:flex;">
-          <button data-opt="reset" style="flex:1;">reset</button>
-        </div>
-      </div>`;
-    document.body.appendChild(panel);
-
-    const dbgTitle = panel.querySelector('#dbg-title');
-    const dbgBody = panel.querySelector('#dbg-body');
-    dbgTitle.addEventListener('click', () => {
-      const collapsed = dbgBody.style.display === 'none';
-      dbgBody.style.display = collapsed ? '' : 'none';
-      dbgTitle.textContent = (collapsed ? '▾' : '▸') + ' Tile debug';
-    });
-
-    let dbgOpts = { detectRetina: false, zoomSnap: 0 };
-    let manualZoom = false; // once true, ResizeObserver's fitFrance() is skipped
-    // Leaflet snaps setZoom() to the nearest zoomSnap multiple, so we track the
-    // "requested" zoom separately from the actual snapped zoom Leaflet renders at.
-    let rawZoom = map.getZoom();
-    const dbgState = panel.querySelector('#dbg-state');
-    const dragBtn = panel.querySelector('[data-opt="dragtoggle"]');
-    function renderState() {
-      const actual = map.getZoom();
-      dbgState.textContent = `retina=${dbgOpts.detectRetina} snap=${dbgOpts.zoomSnap} z=${actual.toFixed(2)} (${rawZoom.toFixed(2)})`;
-      dragBtn.textContent = `drag: ${map.dragging.enabled() ? 'on' : 'off'}`;
-    }
-    panel.addEventListener('click', (e) => {
-      const opt = e.target.dataset.opt;
-      if (!opt) return;
-
-      if (opt === 'retina0') { dbgOpts.detectRetina = false; mountTileLayer({ detectRetina: false }); }
-      if (opt === 'retina1') { dbgOpts.detectRetina = true; mountTileLayer({ detectRetina: true }); }
-      if (opt === 'snap0') { dbgOpts.zoomSnap = 0; map.options.zoomSnap = 0; map.setZoom(rawZoom); }
-      if (opt === 'snap025') { dbgOpts.zoomSnap = 0.25; map.options.zoomSnap = 0.25; map.setZoom(rawZoom); }
-      if (opt === 'snap1') { dbgOpts.zoomSnap = 1; map.options.zoomSnap = 1; map.setZoom(rawZoom); }
-
-      if (opt === 'zoomdown10') { manualZoom = true; rawZoom -= 1; map.setZoom(rawZoom); }
-      if (opt === 'zoomdown')   { manualZoom = true; rawZoom -= 0.1; map.setZoom(rawZoom); }
-      if (opt === 'zoomup')     { manualZoom = true; rawZoom += 0.1; map.setZoom(rawZoom); }
-      if (opt === 'zoomup10')   { manualZoom = true; rawZoom += 1; map.setZoom(rawZoom); }
-      if (opt === 'zoomauto')   { manualZoom = false; fitFrance(); rawZoom = map.getZoom(); }
-
-      if (opt === 'dragtoggle') {
-        if (map.dragging.enabled()) map.dragging.disable(); else map.dragging.enable();
-      }
-
-      if (opt === 'reset') {
-        dbgOpts.detectRetina = false;
-        dbgOpts.zoomSnap = 0;
-        manualZoom = false;
-        map.options.zoomSnap = 0;
-        mountTileLayer({ detectRetina: false });
-        fitFrance();
-        rawZoom = map.getZoom();
-        if (map.dragging.enabled()) map.dragging.disable();
-      }
-
-      renderState();
-    });
-    dbgSuppressAutoFit = () => manualZoom;
-    map.on('zoomend', () => {
-      if (!manualZoom) rawZoom = map.getZoom();
-      renderState();
-    });
-    renderState();
-  }
+  }).addTo(map);
 
   // Rivers + Border deferred so the overlay paints immediately
   setTimeout(() => {
