@@ -638,6 +638,8 @@
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '© <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics',
     maxZoom: 19,
+    detectRetina: true,
+    keepBuffer: 1,
   }).once('load', () => {
     const cover = document.getElementById('map-cover');
     if (cover) {
