@@ -1694,8 +1694,10 @@
   // ── Supabase analytics ───────────────────────────────────────────────────
   const SB_URL = 'https://njnzxcxaekvbonahaxgh.supabase.co';
   const SB_KEY = 'sb_publishable_P-hy_VtGaIT_yi1UKoEGvw_G4S1R1XU';
+  const IS_LOCAL = ['localhost', '127.0.0.1', ''].includes(location.hostname);
 
   function trackScore() {
+    if (IS_LOCAL) return Promise.resolve();
     const total = Math.round(guesses.reduce((s, g) => s + g.dist, 0));
     return fetch(SB_URL + '/rest/v1/scores', {
       method: 'POST',
@@ -1709,6 +1711,7 @@
   }
 
   function trackGuess(cityCode, roundNum, distKm) {
+    if (IS_LOCAL) return;
     fetch(SB_URL + '/rest/v1/guesses', {
       method: 'POST',
       headers: {
@@ -1721,6 +1724,7 @@
   }
 
   function trackEvent(event) {
+    if (IS_LOCAL) return;
     fetch(SB_URL + '/rest/v1/events', {
       method: 'POST',
       headers: {
