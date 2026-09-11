@@ -289,6 +289,8 @@
     map.setView([centerLat, LNG_CENTER], Math.min(zoomH, zoomW), { animate: false });
   }
 
+  fitLatitudes();
+
   new ResizeObserver(() => {
     const mapEl = document.getElementById('map');
     if (mapEl.clientHeight < 50) return;
@@ -325,7 +327,7 @@
     "Mende", "Alès", "Le Puy-en-Velay", "Barcelonnette", "Digne-les-Bains",
     "Briançon", "Vesoul", "Lons-le-Saunier", "Châlons-en-Champagne",
     "Charleville-Mézières", "Pontoise", "Saint-Lô", "Alençon",
-    "Châteaubriant", "Privas", "Moulins", "Saint-Brieuc",
+    "Châteaubriant", "Privas", "Moulins", "Saint-Brieuc", "Langon",
   ]);
   function addLandmark(lat, lng, name) {
     const isNew = NEW_LANDMARK_NAMES.has(name);
@@ -555,7 +557,9 @@
   document.getElementById('settings-toggle').addEventListener('click', () => {
     document.getElementById('settings-panel').classList.toggle('collapsed');
   });
-  document.getElementById('show-new-toggle').addEventListener('change', (e) => {
+  const showNewToggle = document.getElementById('show-new-toggle');
+  document.body.classList.toggle('show-new', showNewToggle.checked);
+  showNewToggle.addEventListener('change', (e) => {
     document.body.classList.toggle('show-new', e.target.checked);
   });
 </script>
