@@ -42,7 +42,8 @@
     header .subtitle { font-size: 0.78rem; color: #888; letter-spacing: 0.04em; }
 
     /* ── Map ── */
-    #map { flex: 1; width: 100%; position: relative; background: #1a1a2e; }
+    #map { flex: 1; width: 100%; position: relative; background: #1a1a2e; overflow: hidden; }
+    #map-inner { position: absolute; inset: 0; transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
     .leaflet-container { background: #1a1a2e !important; }
     #map-cover {
       position: absolute; inset: 0; background: #1a1a2e; z-index: 1000; pointer-events: none;
@@ -122,6 +123,24 @@
     }
     #submit-btn:hover { background: #c73652; }
     #submit-btn:active { transform: scale(0.93); }
+
+    #zoom-btn {
+      display: none;
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: #16213e;
+      color: #eee;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: background 0.2s, transform 0.1s;
+      align-items: center; justify-content: center;
+      touch-action: none;
+    }
+    #zoom-btn.visible { display: flex; }
+    #zoom-btn:hover { background: #0f3460; }
+    #zoom-btn:active, #zoom-btn.zooming { transform: scale(0.93); background: #0f3460; }
 
     #suggestions {
       position: absolute;
@@ -434,7 +453,7 @@
   <div id="round-indicator"><div class="round-dot"></div><div class="round-dot"></div><div class="round-dot"></div><div class="round-dot"></div><div class="round-dot"></div></div>
 </header>
 
-<div id="map"><div id="map-cover"></div>
+<div id="map"><div id="map-inner"></div><div id="map-cover"></div>
   <!-- Score panel -->
   <div id="score-panel">
     <div class="panel-title" id="panel-round-label">Manche 1 / 5</div>
@@ -455,6 +474,7 @@
 
 <!-- Bottom bar: search or action button -->
 <div id="bottom-bar">
+  <button id="zoom-btn" title="Maintenir pour zoomer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg></button>
   <div id="search-wrapper">
     <input id="search-input" type="text" placeholder="Trouve une ville proche…" autocomplete="off" spellcheck="false" />
     <div id="suggestions" style="display:none"></div>
@@ -539,7 +559,7 @@
 <script src="landmarks.js"></script>
 <script>
   // ── Map ───────────────────────────────────────────────────────────────────
-  const map = L.map('map', {
+  const map = L.map('map-inner', {
     center: [46.6, 2.5], zoom: 6,
     zoomSnap: 0,
     zoomControl: false, dragging: false,
@@ -561,7 +581,7 @@
   // Snapshot full screen height once so keyboard open/close doesn't affect it on mobile
   const SCREEN_H = window.visualViewport ? window.visualViewport.height : window.innerHeight;
 
-  function fitLatitudes() {
+  function fitLatitudes(animate) {
     const mapEl = document.getElementById('map');
     const availH = mapEl.clientHeight - PAD_TOP - PAD_BOTTOM;
     const availW = mapEl.clientWidth - PAD_SIDES * 2;
@@ -588,10 +608,56 @@
     const zoomW = lo;
 
     // Use whichever axis is tighter
-    map.setView([centerLat, LNG_CENTER], Math.min(zoomH, zoomW), { animate: false });
+    map.setView([centerLat, LNG_CENTER], Math.min(zoomH, zoomW), { animate: !!animate });
   }
 
   const fitFrance = fitLatitudes;
+
+  // ── Hold-to-zoom on the current target ──────────────────────────────────
+  // Pure CSS transform on the map's own container — never touches Leaflet's
+  // zoom/pan, so no tiles are ever requested or swapped and there's nothing
+  // that can flicker. Trade-off: the view is a bit soft while held, since
+  // we're just magnifying already-rendered pixels rather than fetching
+  // sharper ones.
+  const ZOOM_SCALE = 2.4;
+  const mapInnerEl = document.getElementById('map-inner');
+  let isZoomedIn = false;
+
+  function zoomInOnTarget() {
+    if (isZoomedIn || guessedThisRound) return;
+    const target = targets[round];
+    if (!target) return;
+    const [tLng, tLat] = target.centre.coordinates;
+    isZoomedIn = true;
+    document.getElementById('zoom-btn').classList.add('zooming');
+    // Scale around the map's top-left, then translate so the target point
+    // (originally at pt) ends up centered on screen instead of just growing in place.
+    const pt = map.latLngToContainerPoint([tLat, tLng]);
+    const cx = mapInnerEl.clientWidth / 2;
+    const cy = mapInnerEl.clientHeight / 2;
+    const tx = cx - ZOOM_SCALE * pt.x;
+    const ty = cy - ZOOM_SCALE * pt.y;
+    mapInnerEl.style.transformOrigin = '0 0';
+    mapInnerEl.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + ZOOM_SCALE + ')';
+  }
+
+  function zoomOutFromTarget() {
+    if (!isZoomedIn) return;
+    isZoomedIn = false;
+    document.getElementById('zoom-btn').classList.remove('zooming');
+    mapInnerEl.style.transform = 'none';
+  }
+
+  const zoomBtn = document.getElementById('zoom-btn');
+  zoomBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    zoomBtn.setPointerCapture(e.pointerId);
+    zoomInOnTarget();
+  });
+  zoomBtn.addEventListener('pointerup', zoomOutFromTarget);
+  zoomBtn.addEventListener('pointercancel', zoomOutFromTarget);
+  zoomBtn.addEventListener('lostpointercapture', zoomOutFromTarget);
+  zoomBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
   let suppressResize = false;
   // ResizeObserver fires when #map has a real size — reliable on both desktop and mobile
@@ -602,7 +668,7 @@
     // On touch devices, skip when the keyboard is open (map height shrinks)
     if (isTouchDevice && mapEl.clientHeight < SCREEN_H * 0.5) return;
     map.invalidateSize({ animate: false });
-    fitFrance();
+    if (!isZoomedIn) fitFrance();
   }).observe(document.getElementById('map'));
 
   // Lift bottom bar + km display above the virtual keyboard on mobile
@@ -635,7 +701,9 @@
   map.getPane('lines').style.pointerEvents        = 'none';
   map.getPane('labels').style.pointerEvents       = 'none';
 
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  const TILE_URL_TEMPLATE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+  const satelliteLayer = L.tileLayer(TILE_URL_TEMPLATE, {
     attribution: '© <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics',
     maxZoom: 19,
     detectRetina: true,
@@ -947,6 +1015,7 @@
     // Show search, hide button
     document.getElementById('search-wrapper').style.display = 'block';
     document.getElementById('submit-btn').style.display = 'flex';
+    document.getElementById('zoom-btn').classList.add('visible');
     document.getElementById('search-input').value = '';
     document.getElementById('action-btn').style.display = 'none';
     if (!('ontouchstart' in window)) document.getElementById('search-input').focus();
@@ -1033,6 +1102,8 @@
   function showActionBtn() {
     document.getElementById('search-wrapper').style.display = 'none';
     document.getElementById('submit-btn').style.display = 'none';
+    document.getElementById('zoom-btn').classList.remove('visible');
+    zoomOutFromTarget();
     const btn = document.getElementById('action-btn');
     btn.style.display = 'block';
     btn.textContent = round < TOTAL_ROUNDS - 1 ? 'Suivant →' : 'Résultats';
@@ -1680,6 +1751,8 @@
     input.value = '';
     document.getElementById('search-wrapper').style.display = 'none';
     document.getElementById('submit-btn').style.display = 'none';
+    document.getElementById('zoom-btn').classList.remove('visible');
+    zoomOutFromTarget();
   }
 
   function updateActive(items) {
