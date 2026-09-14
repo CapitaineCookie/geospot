@@ -42,15 +42,16 @@
     header .subtitle { font-size: 0.78rem; color: #888; letter-spacing: 0.04em; }
 
     /* ── Map ── */
-    #map { flex: 1; width: 100%; position: relative; background: #1a1a2e; overflow: hidden; }
-    #map-inner { position: absolute; inset: 0; transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+    #map { flex: 1; width: 100%; position: relative; background: #1a1a2e; overflow: hidden; --zoom-duration: 0.45s; }
+    #map-inner { position: absolute; inset: 0; transition: transform var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1); }
     .leaflet-container { background: #1a1a2e !important; }
     #map-cover {
       position: absolute; inset: 0; background: #1a1a2e; z-index: 1000; pointer-events: none;
       transition: opacity 0.4s ease;
     }
     #map-cover.hidden { opacity: 0; pointer-events: none; }
-    .leaflet-interactive { transition: r 0.15s ease, d 0.15s ease; }
+    .leaflet-interactive { transition: r var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1), d var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1), stroke-width var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1); }
+    .rivers-layer, .rivers-layer path, .border-layer, .border-layer path { transition: stroke-width var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1); }
 
     /* ── Bottom bar ── */
     #km-display {
@@ -620,6 +621,9 @@
   // we're just magnifying already-rendered pixels rather than fetching
   // sharper ones.
   const ZOOM_SCALE = 2.4;
+  const TARGET_DOT_RADIUS = 6; // matches makeMarker's default radius
+  const TARGET_DOT_WEIGHT = 2; // matches makeMarker's default weight
+  const RIVER_WEIGHT = 1.2; // matches rivers layer's default weight
   const mapInnerEl = document.getElementById('map-inner');
   let isZoomedIn = false;
 
@@ -629,6 +633,7 @@
     if (!target) return;
     const [tLng, tLat] = target.centre.coordinates;
     isZoomedIn = true;
+    document.getElementById('map').style.setProperty('--zoom-duration', '0.75s');
     document.getElementById('zoom-btn').classList.add('zooming');
     // Scale around the map's top-left, then translate so the target point
     // (originally at pt) ends up centered on screen instead of just growing in place.
@@ -639,11 +644,19 @@
     const ty = cy - ZOOM_SCALE * pt.y;
     mapInnerEl.style.transformOrigin = '0 0';
     mapInnerEl.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + ZOOM_SCALE + ')';
+    // Counter-scale the target dot so it keeps its normal on-screen size instead of growing with the map
+    if (targetMarker) targetMarker.setStyle({ radius: TARGET_DOT_RADIUS / ZOOM_SCALE, weight: TARGET_DOT_WEIGHT / 1.9 });
+    if (riversLayer) riversLayer.setStyle({ weight: RIVER_WEIGHT / ZOOM_SCALE });
+    borderLayers.forEach((layer, i) => layer.setStyle({ weight: BORDER_WEIGHTS[i] / ZOOM_SCALE }));
   }
 
   function zoomOutFromTarget() {
     if (!isZoomedIn) return;
+    if (targetMarker) targetMarker.setStyle({ radius: TARGET_DOT_RADIUS, weight: TARGET_DOT_WEIGHT });
+    if (riversLayer) riversLayer.setStyle({ weight: RIVER_WEIGHT });
+    borderLayers.forEach((layer, i) => layer.setStyle({ weight: BORDER_WEIGHTS[i] }));
     isZoomedIn = false;
+    document.getElementById('map').style.setProperty('--zoom-duration', '0.45s');
     document.getElementById('zoom-btn').classList.remove('zooming');
     mapInnerEl.style.transform = 'none';
   }
@@ -740,8 +753,8 @@
         if (seg.length >= 2) clippedSegments.push({ type:'Feature', geometry:{ type:'LineString', coordinates:seg }, properties:{} });
       });
     });
-    L.geoJSON({ type:'FeatureCollection', features:clippedSegments }, {
-      style: { color:'#ffffff', weight:1.2, opacity:0.25 }, interactive:false,
+    riversLayer = L.geoJSON({ type:'FeatureCollection', features:clippedSegments }, {
+      style: { color:'#ffffff', weight:1.2, opacity:0.25 }, interactive:false, className:'rivers-layer',
     }).addTo(map);
 
     const mainlandGeoJSON = {
@@ -749,9 +762,9 @@
       geometry:{ type:'MultiPolygon', coordinates:[...FRANCE_GEOJSON.geometry.coordinates].sort((a,b) => b[0].length - a[0].length).slice(0,3) },
       properties:{},
     };
-    L.geoJSON(mainlandGeoJSON, { style:{ color:'#a0c8ff', weight:5, opacity:0.12, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
-    L.geoJSON(mainlandGeoJSON, { style:{ color:'#c8e0ff', weight:2.5, opacity:0.22, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
-    L.geoJSON(mainlandGeoJSON, { style:{ color:'#ffffff', weight:1, opacity:0.55, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
+    borderLayers.push(L.geoJSON(mainlandGeoJSON, { style:{ color:'#a0c8ff', weight:5, opacity:0.12, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false, className:'border-layer' }).addTo(map));
+    borderLayers.push(L.geoJSON(mainlandGeoJSON, { style:{ color:'#c8e0ff', weight:2.5, opacity:0.22, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false, className:'border-layer' }).addTo(map));
+    borderLayers.push(L.geoJSON(mainlandGeoJSON, { style:{ color:'#ffffff', weight:1, opacity:0.55, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false, className:'border-layer' }).addTo(map));
   }, 0);
 
   // ── Game state ────────────────────────────────────────────────────────────
@@ -762,6 +775,9 @@
   let trackScorePromise = null;
   let guessMarker = null;
   let targetMarker = null;
+  let riversLayer = null;
+  const borderLayers = [];
+  const BORDER_WEIGHTS = [5, 2.5, 1];
   let roundLayers = [];  // all markers/lines added during a round
   let guessedThisRound = false;
 
