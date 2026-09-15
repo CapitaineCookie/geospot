@@ -41,9 +41,60 @@
     header .subtitle { font-size: 0.78rem; color: #888; letter-spacing: 0.04em; }
 
     /* ── Map ── */
-    #map { flex: 1; width: 100%; position: relative; background: #1a1a2e; }
+    #map-area { flex: 1; width: 100%; position: relative; background: #1a1a2e; overflow: hidden; }
+    #map { position: absolute; inset: 0; background: #1a1a2e; transform-origin: center center; }
     .leaflet-container { background: #1a1a2e !important; }
     .leaflet-interactive { transition: r 0.15s ease, d 0.15s ease; }
+
+    /* ── Debug zoom display ── */
+    #zoom-debug {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 900;
+      font-size: 0.75rem;
+      font-family: monospace;
+      color: #eee;
+      background: rgba(22, 33, 62, 0.75);
+      padding: 4px 8px;
+      border-radius: 6px;
+      pointer-events: none;
+    }
+
+    /* ── Zoom buttons ── */
+    #zoom-controls {
+      position: absolute;
+      bottom: 24px;
+      left: 16px;
+      z-index: 900;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #texture-zoom-controls {
+      position: absolute;
+      bottom: 24px;
+      left: 64px;
+      z-index: 900;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .zoom-btn.texture-btn { border-color: #ff8c00; color: #ff8c00; }
+    .zoom-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: 1px solid #0f3460;
+      background: rgba(22, 33, 62, 0.92);
+      color: #eee;
+      font-size: 1.2rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .zoom-btn:active { transform: scale(0.93); }
 
     /* ── Bottom bar ── */
     #bottom-bar {
@@ -117,7 +168,7 @@
 
     .dot-label {
       position: absolute;
-      transform: translateX(-50%);
+      transform: translateX(-50%) scale(var(--inv-texture-scale, 1));
       bottom: -8px;
       left: 0;
       white-space: nowrap;
@@ -211,7 +262,17 @@
   <div class="subtitle">Atlas</div>
 </header>
 
-<div id="map">
+<div id="map-area">
+  <div id="map"></div>
+  <div id="zoom-debug"></div>
+  <div id="zoom-controls">
+    <button class="zoom-btn" id="zoom-in-btn" type="button">+</button>
+    <button class="zoom-btn" id="zoom-out-btn" type="button">−</button>
+  </div>
+  <div id="texture-zoom-controls">
+    <button class="zoom-btn texture-btn" id="texture-zoom-in-btn" type="button">+</button>
+    <button class="zoom-btn texture-btn" id="texture-zoom-out-btn" type="button">−</button>
+  </div>
   <div id="settings-panel">
     <div class="panel-title" id="settings-toggle">Options</div>
     <div id="settings-body">
@@ -244,10 +305,10 @@
   // ── Map ───────────────────────────────────────────────────────────────────
   const map = L.map('map', {
     center: [46.6, 2.5], zoom: 6,
-    zoomSnap: 0,
+    zoomSnap: 0, zoomDelta: 0.5,
     zoomControl: false, dragging: false,
-    scrollWheelZoom: false, doubleClickZoom: false,
-    touchZoom: false, boxZoom: false, keyboard: false,
+    scrollWheelZoom: false, doubleClickZoom: true,
+    touchZoom: true, boxZoom: false, keyboard: false,
   });
 
   const LAT_SOUTH = 41.2;
@@ -262,11 +323,14 @@
   const isTouchDevice = navigator.maxTouchPoints > 0;
   const SCREEN_H = window.visualViewport ? window.visualViewport.height : window.innerHeight;
 
+  const CENTER_LAT = (LAT_NORTH + LAT_SOUTH) / 2;
+  let initialZoom = null;
+
   function fitLatitudes() {
     const mapEl = document.getElementById('map');
     const availH = mapEl.clientHeight - PAD_TOP - PAD_BOTTOM;
     const availW = mapEl.clientWidth - PAD_SIDES * 2;
-    const centerLat = (LAT_NORTH + LAT_SOUTH) / 2;
+    const centerLat = CENTER_LAT;
 
     let lo = 0, hi = 18;
     for (let i = 0; i < 30; i++) {
@@ -286,10 +350,63 @@
     }
     const zoomW = lo;
 
-    map.setView([centerLat, LNG_CENTER], Math.min(zoomH, zoomW), { animate: false });
+    initialZoom = Math.min(zoomH, zoomW);
+    map.setMinZoom(initialZoom);
+    map.setView([centerLat, LNG_CENTER], initialZoom, { animate: false });
   }
 
-  fitLatitudes();
+  const zoomDebugEl = document.getElementById('zoom-debug');
+  function updateZoomDebug() {
+    zoomDebugEl.textContent = 'zoom: ' + map.getZoom().toFixed(2) + ' / texture: ' + textureScale.toFixed(2) + 'x';
+  }
+  map.on('zoom', updateZoomDebug);
+
+  // Free panning/zooming anywhere is allowed, but zooming back out all the
+  // way to the minimum snaps back to the exact original position.
+  let recentering = false;
+  map.on('zoomend', () => {
+    if (recentering) return;
+    if (map.getZoom() > initialZoom + 1e-6) return;
+    const c = map.getCenter();
+    if (Math.abs(c.lat - CENTER_LAT) > 1e-6 || Math.abs(c.lng - LNG_CENTER) > 1e-6) {
+      recentering = true;
+      map.setView([CENTER_LAT, LNG_CENTER], initialZoom, { animate: false });
+      recentering = false;
+    }
+  });
+
+  document.getElementById('zoom-in-btn').addEventListener('click', () => map.zoomIn());
+  document.getElementById('zoom-out-btn').addEventListener('click', () => map.zoomOut());
+
+  // ── Prototype: "texture zoom" — CSS-scale the map's tiles/pane directly
+  // instead of calling Leaflet's zoom API.
+  const mapContainerEl = map.getContainer();
+  let textureScale = 1;
+  function applyTextureScale() {
+    mapContainerEl.style.transform = textureScale === 1 ? '' : `scale(${textureScale})`;
+    document.documentElement.style.setProperty('--inv-texture-scale', 1 / textureScale);
+    rescaleLandmarkDots();
+    updateZoomDebug();
+  }
+  updateZoomDebug();
+  document.getElementById('texture-zoom-in-btn').addEventListener('click', () => {
+    textureScale = Math.min(8, textureScale + 0.5);
+    applyTextureScale();
+  });
+  document.getElementById('texture-zoom-out-btn').addEventListener('click', () => {
+    textureScale = Math.max(1, textureScale - 0.5);
+    applyTextureScale();
+  });
+
+  // Mouse wheel now drives texture zoom instead of Leaflet's zoom API.
+  document.getElementById('map').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const step = 0.25;
+    textureScale = e.deltaY < 0
+      ? Math.min(8, textureScale + step)
+      : Math.max(1, textureScale - step);
+    applyTextureScale();
+  }, { passive: false });
 
   new ResizeObserver(() => {
     const mapEl = document.getElementById('map');
@@ -327,8 +444,13 @@
     "Mende", "Alès", "Le Puy-en-Velay", "Barcelonnette", "Digne-les-Bains",
     "Briançon", "Vesoul", "Lons-le-Saunier", "Châlons-en-Champagne",
     "Charleville-Mézières", "Pontoise", "Saint-Lô", "Alençon",
-    "Châteaubriant", "Privas", "Moulins", "Saint-Brieuc", "Langon",
+    "Châteaubriant", "Privas", "Moulins", "Saint-Brieuc",
   ]);
+  // Landmark dots keep a constant on-screen size regardless of texture zoom:
+  // each tracks its own base radius, and rescaleLandmarkDots() (called from
+  // applyTextureScale) divides it by the current texture scale.
+  const landmarkDots = [];
+
   function addLandmark(lat, lng, name) {
     const isNew = NEW_LANDMARK_NAMES.has(name);
     const latlng = [lat, lng];
@@ -340,18 +462,33 @@
     });
     const labelMarker = L.marker(latlng, { icon: labelIcon, pane: 'labels', interactive: false });
 
+    const baseRadius = 5;
+    const hoverRadius = 7;
+    const baseWeight = 1.5;
     const dot = L.circleMarker(latlng, {
-      radius: 5,
+      radius: baseRadius / textureScale,
       color: STROKE_LANDMARK,
-      weight: 1.5,
+      weight: baseWeight / textureScale,
       fillColor: COLOR_LANDMARK,
       fillOpacity: 1,
       pane: 'dotsLandmark',
       className: isNew ? 'lm-dot-new' : '',
     }).addTo(map);
+    dot._baseRadius = baseRadius;
+    dot._hoverRadius = hoverRadius;
+    dot._baseWeight = baseWeight;
+    dot._hovered = false;
+    landmarkDots.push(dot);
 
-    dot.on('mouseover', () => { dot.setRadius(7); labelMarker.addTo(map); labelMarker.getElement().style.zIndex = 9999; });
-    dot.on('mouseout',  () => { dot.setRadius(5); map.removeLayer(labelMarker); });
+    dot.on('mouseover', () => { dot._hovered = true; dot.setRadius(hoverRadius / textureScale); labelMarker.addTo(map); labelMarker.getElement().style.zIndex = 9999; });
+    dot.on('mouseout',  () => { dot._hovered = false; dot.setRadius(baseRadius / textureScale); map.removeLayer(labelMarker); });
+  }
+
+  function rescaleLandmarkDots() {
+    landmarkDots.forEach(dot => {
+      dot.setRadius((dot._hovered ? dot._hoverRadius : dot._baseRadius) / textureScale);
+      dot.setStyle({ weight: dot._baseWeight / textureScale });
+    });
   }
 
   // ── Search dot ────────────────────────────────────────────────────────────
@@ -557,9 +694,7 @@
   document.getElementById('settings-toggle').addEventListener('click', () => {
     document.getElementById('settings-panel').classList.toggle('collapsed');
   });
-  const showNewToggle = document.getElementById('show-new-toggle');
-  document.body.classList.toggle('show-new', showNewToggle.checked);
-  showNewToggle.addEventListener('change', (e) => {
+  document.getElementById('show-new-toggle').addEventListener('change', (e) => {
     document.body.classList.toggle('show-new', e.target.checked);
   });
 </script>
