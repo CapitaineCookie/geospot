@@ -42,65 +42,20 @@
     header .subtitle { font-size: 0.78rem; color: #888; letter-spacing: 0.04em; }
 
     /* ── Map ── */
-    #map-area { flex: 1; width: 100%; position: relative; background: #1a1a2e; overflow: hidden; }
-    #map { position: absolute; inset: 0; background: #1a1a2e; transform-origin: center center; }
+    #map { flex: 1; width: 100%; position: relative; background: #1a1a2e; overflow: hidden; --zoom-duration: 0.45s; }
+    #map-inner { position: absolute; inset: 0; transition: transform var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1); }
     .leaflet-container { background: #1a1a2e !important; }
     #map-cover {
       position: absolute; inset: 0; background: #1a1a2e; z-index: 1000; pointer-events: none;
       transition: opacity 0.4s ease;
     }
     #map-cover.hidden { opacity: 0; pointer-events: none; }
-    .leaflet-interactive { transition: r 0.15s ease, d 0.15s ease; }
-
-    /* ── Debug zoom display ── */
-    #zoom-debug {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      z-index: 900;
-      font-size: 0.75rem;
-      font-family: monospace;
-      color: #eee;
-      background: rgba(22, 33, 62, 0.75);
-      padding: 4px 8px;
-      border-radius: 6px;
-      pointer-events: none;
-    }
-
-    /* ── Zoom buttons ── */
-    #zoom-controls {
-      position: absolute;
-      bottom: 24px;
-      left: 16px;
-      z-index: 900;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    #texture-zoom-controls {
-      position: absolute;
-      bottom: 24px;
-      left: 64px;
-      z-index: 900;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .zoom-btn.texture-btn { border-color: #ff8c00; color: #ff8c00; }
-    .zoom-btn {
-      width: 40px; height: 40px;
-      border-radius: 50%;
-      border: 1px solid #0f3460;
-      background: rgba(22, 33, 62, 0.92);
-      color: #eee;
-      font-size: 1.2rem;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-      backdrop-filter: blur(8px);
-      display: flex; align-items: center; justify-content: center;
-    }
-    .zoom-btn:active { transform: scale(0.93); }
+    /* Off-screen Leaflet instance used only to warm the browser's tile cache
+       ahead of time — same size as the real map so it requests the same
+       tiles, but never shown and never interactive. */
+    #prefetch-map { position: fixed; top: 0; left: -99999px; visibility: hidden; pointer-events: none; }
+    .leaflet-interactive { transition: r var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1), d var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1), stroke-width var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1); }
+    .rivers-layer, .rivers-layer path, .border-layer, .border-layer path { transition: stroke-width var(--zoom-duration) cubic-bezier(0.22, 1, 0.36, 1); }
 
     /* ── Bottom bar ── */
     #km-display {
@@ -173,6 +128,45 @@
     }
     #submit-btn:hover { background: #c73652; }
     #submit-btn:active { transform: scale(0.93); }
+
+    #zoom-btn {
+      display: none;
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: #16213e;
+      color: #eee;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: background 0.2s, transform 0.1s;
+      align-items: center; justify-content: center;
+      touch-action: none;
+    }
+    #zoom-btn.visible { display: flex; }
+    #zoom-btn:hover { background: #0f3460; }
+    #zoom-btn:active, #zoom-btn.zooming { transform: scale(0.93); background: #0f3460; }
+
+    #zoom-debug-btn {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 950;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #0f3460;
+      background: rgba(22, 33, 62, 0.92);
+      color: #eee;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: background 0.2s;
+    }
+    #zoom-debug-btn:hover { background: #0f3460; }
+    #zoom-debug-btn.leaflet-mode { border-color: #e94560; color: #e94560; }
 
     #suggestions {
       position: absolute;
@@ -485,17 +479,9 @@
   <div id="round-indicator"><div class="round-dot"></div><div class="round-dot"></div><div class="round-dot"></div><div class="round-dot"></div><div class="round-dot"></div></div>
 </header>
 
-<div id="map-area">
-<div id="map"><div id="map-cover"></div></div>
-<div id="zoom-debug"></div>
-<div id="zoom-controls">
-  <button class="zoom-btn" id="zoom-in-btn" type="button">+</button>
-  <button class="zoom-btn" id="zoom-out-btn" type="button">−</button>
-</div>
-<div id="texture-zoom-controls">
-  <button class="zoom-btn texture-btn" id="texture-zoom-in-btn" type="button">+</button>
-  <button class="zoom-btn texture-btn" id="texture-zoom-out-btn" type="button">−</button>
-</div>
+<div id="prefetch-map"></div>
+<div id="map"><div id="map-inner"></div><div id="map-cover"></div>
+  <button id="zoom-debug-btn" class="leaflet-mode" title="Basculer le mode de zoom (debug)">LEAFLET ZOOM</button>
   <!-- Score panel -->
   <div id="score-panel">
     <div class="panel-title" id="panel-round-label">Manche 1 / 5</div>
@@ -516,6 +502,7 @@
 
 <!-- Bottom bar: search or action button -->
 <div id="bottom-bar">
+  <button id="zoom-btn" title="Cliquer pour zoomer / dézoomer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg></button>
   <div id="search-wrapper">
     <input id="search-input" type="text" placeholder="Trouve une ville proche…" autocomplete="off" spellcheck="false" />
     <div id="suggestions" style="display:none"></div>
@@ -600,12 +587,12 @@
 <script src="landmarks.js"></script>
 <script>
   // ── Map ───────────────────────────────────────────────────────────────────
-  const map = L.map('map', {
+  const map = L.map('map-inner', {
     center: [46.6, 2.5], zoom: 6,
-    zoomSnap: 0, zoomDelta: 0.5,
+    zoomSnap: 0,
     zoomControl: false, dragging: false,
-    scrollWheelZoom: true, doubleClickZoom: true,
-    touchZoom: true, boxZoom: false, keyboard: false,
+    scrollWheelZoom: false, doubleClickZoom: false,
+    touchZoom: false, boxZoom: false, keyboard: false,
   });
 
   // The two latitudes that must always be fully visible, regardless of screen size
@@ -622,14 +609,11 @@
   // Snapshot full screen height once so keyboard open/close doesn't affect it on mobile
   const SCREEN_H = window.visualViewport ? window.visualViewport.height : window.innerHeight;
 
-  const CENTER_LAT = (LAT_NORTH + LAT_SOUTH) / 2;
-  let initialZoom = null;
-
-  function fitLatitudes() {
+  function fitLatitudes(animate) {
     const mapEl = document.getElementById('map');
     const availH = mapEl.clientHeight - PAD_TOP - PAD_BOTTOM;
     const availW = mapEl.clientWidth - PAD_SIDES * 2;
-    const centerLat = CENTER_LAT;
+    const centerLat = (LAT_NORTH + LAT_SOUTH) / 2;
 
     // Binary search for zoom constrained by height
     let lo = 0, hi = 18;
@@ -652,55 +636,171 @@
     const zoomW = lo;
 
     // Use whichever axis is tighter
-    initialZoom = Math.min(zoomH, zoomW);
-    map.setMinZoom(initialZoom);
-    map.setView([centerLat, LNG_CENTER], initialZoom, { animate: false });
+    const zoom = Math.min(zoomH, zoomW);
+    map.setView([centerLat, LNG_CENTER], zoom, { animate: !!animate });
+
+    baseZoom = zoom;
+    baseCenterLatLng = L.latLng(centerLat, LNG_CENTER);
+    syncPrefetchMapSize();
+    prefetchView(baseCenterLatLng, baseZoom);
   }
 
   const fitFrance = fitLatitudes;
 
-  const zoomDebugEl = document.getElementById('zoom-debug');
-  function updateZoomDebug() {
-    zoomDebugEl.textContent = 'zoom: ' + map.getZoom().toFixed(2) + ' / texture: ' + textureScale.toFixed(2) + 'x';
-  }
-  map.on('zoom', updateZoomDebug);
+  // ── Hold-to-zoom on the current target ──────────────────────────────────
+  // Pure CSS transform on the map's own container — never touches Leaflet's
+  // zoom/pan, so no tiles are ever requested or swapped and there's nothing
+  // that can flicker. Trade-off: the view is a bit soft while held, since
+  // we're just magnifying already-rendered pixels rather than fetching
+  // sharper ones.
+  const ZOOM_SCALE = 2.4;
+  // Debug switch: false = CSS transform scale (blurry), true = Leaflet's own zoomAround (sharp tiles/vectors)
+  let useLeafletZoom = true;
+  const LEAFLET_ZOOM_DELTA = Math.log2(ZOOM_SCALE) + 1; // extra zoom-level jump beyond the CSS-scale equivalent
+  const TARGET_DOT_RADIUS = 6; // matches makeMarker's default radius
+  const TARGET_DOT_WEIGHT = 2; // matches makeMarker's default weight
+  const RIVER_WEIGHT = 1.2; // matches rivers layer's default weight
+  const mapInnerEl = document.getElementById('map-inner');
+  let isZoomedIn = false;
+  let baseZoomLevel = null; // Leaflet-mode: zoom level to restore on zoom-out
+  let baseCenter = null; // Leaflet-mode: center to restore on zoom-out
 
-  // Free panning/zooming anywhere is allowed, but zooming back out all the
-  // way to the minimum snaps back to the exact original position.
-  let recentering = false;
-  map.on('zoomend', () => {
-    if (recentering) return;
-    if (map.getZoom() > initialZoom + 1e-6) return;
-    const c = map.getCenter();
-    if (Math.abs(c.lat - CENTER_LAT) > 1e-6 || Math.abs(c.lng - LNG_CENTER) > 1e-6) {
-      recentering = true;
-      map.setView([CENTER_LAT, LNG_CENTER], initialZoom, { animate: false });
-      recentering = false;
+  function lockZoomBtn() {
+    document.getElementById('zoom-btn').disabled = true;
+  }
+  function unlockZoomBtn() {
+    document.getElementById('zoom-btn').disabled = false;
+  }
+  // GridLayer only ever loads tiles covering the container's real on-screen
+  // size. While zoomed in, that leaves nothing loaded beyond the crop, so
+  // the zoom-out animation (which just CSS-scales down whatever tiles are
+  // currently loaded) has nothing to reveal at the edges. Trick the layer
+  // into thinking the container is `padFactor` times bigger for one update
+  // pass so it loads a wider tile area than the visible crop; those extra
+  // tiles sit clipped by #map's overflow:hidden until the zoom-out
+  // animation shrinks the pane back down and reveals them.
+  function padTileLoadArea(padFactor) {
+    const realSize = map.getSize();
+    const paddedSize = realSize.multiplyBy(padFactor);
+    map.getSize = () => paddedSize;
+    try {
+      satelliteLayer._update(map.getCenter());
+    } finally {
+      delete map.getSize;
     }
-  });
-
-  document.getElementById('zoom-in-btn').addEventListener('click', () => map.zoomIn());
-  document.getElementById('zoom-out-btn').addEventListener('click', () => map.zoomOut());
-
-  // ── Prototype: "texture zoom" — CSS-scale the map's tiles/pane directly
-  // instead of calling Leaflet's zoom API. Purely visual stretch; Leaflet's
-  // own zoom/pan/coordinates are untouched, so overlays keep their real
-  // positions and just get stretched along with the tiles underneath them.
-  const mapContainerEl = map.getContainer();
-  let textureScale = 1;
-  function applyTextureScale() {
-    mapContainerEl.style.transform = textureScale === 1 ? '' : `scale(${textureScale})`;
-    updateZoomDebug();
   }
-  updateZoomDebug();
-  document.getElementById('texture-zoom-in-btn').addEventListener('click', () => {
-    textureScale = Math.min(8, textureScale + 0.5);
-    applyTextureScale();
+  // Force a marker's underlying SVG <path> to be torn down and recreated
+  // from scratch. A brand-new element has no prior 'd'/position for the
+  // browser to interpolate from, so there's nothing left to visually slide,
+  // regardless of what CSS/animation mechanism caused the artifact.
+  function hardResetMarker(marker) {
+    if (!marker || !map.hasLayer(marker)) return;
+    map.removeLayer(marker);
+    marker.addTo(map);
+  }
+  // CSS-mode animation end: transitionend fires once per transitioned property,
+  // so filter to the one we care about.
+  mapInnerEl.addEventListener('transitionend', (e) => {
+    if (e.propertyName === 'transform' && !useLeafletZoom) unlockZoomBtn();
   });
-  document.getElementById('texture-zoom-out-btn').addEventListener('click', () => {
-    textureScale = Math.max(1, textureScale - 0.5);
-    applyTextureScale();
+
+  function zoomInOnTarget() {
+    if (isZoomedIn || guessedThisRound) return;
+    const target = targets[round];
+    if (!target) return;
+    const [tLng, tLat] = target.centre.coordinates;
+    isZoomedIn = true;
+    lockZoomBtn();
+    document.getElementById('zoom-btn').classList.add('zooming');
+
+    if (useLeafletZoom) {
+      baseZoomLevel = map.getZoom();
+      baseCenter = map.getCenter();
+      if (targetMarker) targetMarker.setStyle({ opacity: 0, fillOpacity: 0 });
+      map.once('moveend', () => {
+        if (targetMarker) {
+          hardResetMarker(targetMarker);
+          targetMarker.setStyle({ opacity: 1, fillOpacity: 1 });
+          popMarker(targetMarker, 9, 6);
+        }
+        padTileLoadArea(ZOOM_SCALE);
+        unlockZoomBtn();
+      });
+      map.setView([tLat, tLng], baseZoomLevel + LEAFLET_ZOOM_DELTA, { animate: true, duration: 0.75 });
+      // Re-warm the base view in the background while zoomed in, so it's
+      // cached again by the time the player zooms back out.
+      if (baseCenterLatLng != null) prefetchView(baseCenterLatLng, baseZoom);
+      return;
+    }
+
+    document.getElementById('map').style.setProperty('--zoom-duration', '0.75s');
+    // Scale around the map's top-left, then translate so the target point
+    // (originally at pt) ends up centered on screen instead of just growing in place.
+    const pt = map.latLngToContainerPoint([tLat, tLng]);
+    const cx = mapInnerEl.clientWidth / 2;
+    const cy = mapInnerEl.clientHeight / 2;
+    const tx = cx - ZOOM_SCALE * pt.x;
+    const ty = cy - ZOOM_SCALE * pt.y;
+    mapInnerEl.style.transformOrigin = '0 0';
+    mapInnerEl.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + ZOOM_SCALE + ')';
+    // Counter-scale the target dot so it keeps its normal on-screen size instead of growing with the map
+    if (targetMarker) targetMarker.setStyle({ radius: TARGET_DOT_RADIUS / ZOOM_SCALE, weight: TARGET_DOT_WEIGHT / 1.9 });
+    if (riversLayer) riversLayer.setStyle({ weight: RIVER_WEIGHT / ZOOM_SCALE });
+    borderLayers.forEach((layer, i) => layer.setStyle({ weight: BORDER_WEIGHTS[i] / ZOOM_SCALE }));
+  }
+
+  function zoomOutFromTarget() {
+    if (!isZoomedIn) return;
+    isZoomedIn = false;
+    lockZoomBtn();
+    document.getElementById('zoom-btn').classList.remove('zooming');
+
+    if (useLeafletZoom) {
+      if (baseZoomLevel != null) {
+        if (targetMarker) targetMarker.setStyle({ opacity: 0, fillOpacity: 0 });
+        map.once('moveend', () => {
+          if (targetMarker) {
+            hardResetMarker(targetMarker);
+            targetMarker.setStyle({ opacity: 1, fillOpacity: 1 });
+            popMarker(targetMarker, 9, 6);
+          }
+          unlockZoomBtn();
+        });
+        map.setView(baseCenter, baseZoomLevel, { animate: true, duration: 0.45 });
+      } else {
+        unlockZoomBtn();
+      }
+      baseZoomLevel = null;
+      baseCenter = null;
+      return;
+    }
+
+    if (targetMarker) targetMarker.setStyle({ radius: TARGET_DOT_RADIUS, weight: TARGET_DOT_WEIGHT });
+    if (riversLayer) riversLayer.setStyle({ weight: RIVER_WEIGHT });
+    borderLayers.forEach((layer, i) => layer.setStyle({ weight: BORDER_WEIGHTS[i] }));
+    document.getElementById('map').style.setProperty('--zoom-duration', '0.45s');
+    mapInnerEl.style.transform = 'none';
+  }
+
+  const zoomDebugBtn = document.getElementById('zoom-debug-btn');
+  zoomDebugBtn.addEventListener('click', () => {
+    if (isZoomedIn) zoomOutFromTarget();
+    useLeafletZoom = !useLeafletZoom;
+    zoomDebugBtn.textContent = useLeafletZoom ? 'LEAFLET ZOOM' : 'CSS ZOOM';
+    zoomDebugBtn.classList.toggle('leaflet-mode', useLeafletZoom);
   });
+
+  const zoomBtn = document.getElementById('zoom-btn');
+  zoomBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    // Toggle: state is flipped immediately regardless of whether the previous
+    // zoom/unzoom animation has finished, so a click mid-animation just
+    // retargets it (setView/CSS transition both interpolate smoothly from
+    // wherever they currently are).
+    if (isZoomedIn) zoomOutFromTarget();
+    else zoomInOnTarget();
+  });
+  zoomBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
   let suppressResize = false;
   // ResizeObserver fires when #map has a real size — reliable on both desktop and mobile
@@ -711,7 +811,7 @@
     // On touch devices, skip when the keyboard is open (map height shrinks)
     if (isTouchDevice && mapEl.clientHeight < SCREEN_H * 0.5) return;
     map.invalidateSize({ animate: false });
-    fitFrance();
+    if (!isZoomedIn) fitFrance();
   }).observe(document.getElementById('map'));
 
   // Lift bottom bar + km display above the virtual keyboard on mobile
@@ -744,11 +844,13 @@
   map.getPane('lines').style.pointerEvents        = 'none';
   map.getPane('labels').style.pointerEvents       = 'none';
 
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  const TILE_URL_TEMPLATE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+  const satelliteLayer = L.tileLayer(TILE_URL_TEMPLATE, {
     attribution: '© <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics',
     maxZoom: 19,
     detectRetina: true,
-    keepBuffer: 1,
+    keepBuffer: 4,
   }).once('load', () => {
     const cover = document.getElementById('map-cover');
     if (cover) {
@@ -761,6 +863,33 @@
       btn.innerHTML = 'Jouer';
     }
   }).addTo(map);
+
+  // ── Tile prefetching ─────────────────────────────────────────────────────
+  // The game only ever shows two views per round: the base France view and
+  // one zoomed-in view on the target. Warm both into the browser's tile
+  // cache ahead of time on a hidden, never-visible Leaflet instance so the
+  // real map's setView never has to wait on a network fetch.
+  const prefetchMapEl = document.getElementById('prefetch-map');
+  const prefetchMap = L.map(prefetchMapEl, {
+    zoomSnap: 0, zoomControl: false, attributionControl: false,
+    dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+    touchZoom: false, boxZoom: false, keyboard: false, fadeAnimation: false,
+  });
+  L.tileLayer(TILE_URL_TEMPLATE, { maxZoom: 19, detectRetina: true, keepBuffer: 0 }).addTo(prefetchMap);
+
+  function syncPrefetchMapSize() {
+    const mapEl = document.getElementById('map');
+    prefetchMapEl.style.width = mapEl.clientWidth + 'px';
+    prefetchMapEl.style.height = mapEl.clientHeight + 'px';
+    prefetchMap.invalidateSize({ animate: false });
+  }
+
+  function prefetchView(center, zoom) {
+    if (prefetchMapEl.clientWidth < 50) return; // not laid out yet
+    prefetchMap.setView(center, zoom, { animate: false });
+  }
+
+  let baseZoom = null, baseCenterLatLng = null;
 
   // Rivers + Border deferred so the overlay paints immediately
   setTimeout(() => {
@@ -781,8 +910,8 @@
         if (seg.length >= 2) clippedSegments.push({ type:'Feature', geometry:{ type:'LineString', coordinates:seg }, properties:{} });
       });
     });
-    L.geoJSON({ type:'FeatureCollection', features:clippedSegments }, {
-      style: { color:'#ffffff', weight:1.2, opacity:0.25 }, interactive:false,
+    riversLayer = L.geoJSON({ type:'FeatureCollection', features:clippedSegments }, {
+      style: { color:'#ffffff', weight:1.2, opacity:0.25 }, interactive:false, className:'rivers-layer',
     }).addTo(map);
 
     const mainlandGeoJSON = {
@@ -790,9 +919,9 @@
       geometry:{ type:'MultiPolygon', coordinates:[...FRANCE_GEOJSON.geometry.coordinates].sort((a,b) => b[0].length - a[0].length).slice(0,3) },
       properties:{},
     };
-    L.geoJSON(mainlandGeoJSON, { style:{ color:'#a0c8ff', weight:5, opacity:0.12, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
-    L.geoJSON(mainlandGeoJSON, { style:{ color:'#c8e0ff', weight:2.5, opacity:0.22, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
-    L.geoJSON(mainlandGeoJSON, { style:{ color:'#ffffff', weight:1, opacity:0.55, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false }).addTo(map);
+    borderLayers.push(L.geoJSON(mainlandGeoJSON, { style:{ color:'#a0c8ff', weight:5, opacity:0.12, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false, className:'border-layer' }).addTo(map));
+    borderLayers.push(L.geoJSON(mainlandGeoJSON, { style:{ color:'#c8e0ff', weight:2.5, opacity:0.22, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false, className:'border-layer' }).addTo(map));
+    borderLayers.push(L.geoJSON(mainlandGeoJSON, { style:{ color:'#ffffff', weight:1, opacity:0.55, fill:false, lineCap:'round', lineJoin:'round' }, interactive:false, className:'border-layer' }).addTo(map));
   }, 0);
 
   // ── Game state ────────────────────────────────────────────────────────────
@@ -803,6 +932,9 @@
   let trackScorePromise = null;
   let guessMarker = null;
   let targetMarker = null;
+  let riversLayer = null;
+  const borderLayers = [];
+  const BORDER_WEIGHTS = [5, 2.5, 1];
   let roundLayers = [];  // all markers/lines added during a round
   let guessedThisRound = false;
 
@@ -915,9 +1047,9 @@
     return m;
   }
 
-  function popMarker(m) {
-    const REST = 6, BIG = 13;
-    const STEPS = 12, HALF = Math.floor(STEPS / 2);
+  function popMarker(m, big, steps) {
+    const REST = 6, BIG = big || 13;
+    const STEPS = steps || 12, HALF = Math.floor(STEPS / 2);
     let step = 0;
     function tick() {
       if (m._hovered) return;
@@ -1049,6 +1181,10 @@
     };
     if (round === 0) setTimeout(spawnTarget, 350); else spawnTarget();
 
+    // Warm the tile cache for this round's zoomed-in view right away, so
+    // it's ready well before the player gets around to clicking zoom-in.
+    if (baseZoom != null) prefetchView([tLat, tLng], baseZoom + LEAFLET_ZOOM_DELTA);
+
     // Show score panel with current round label
     document.getElementById('score-panel').classList.add('visible');
     document.getElementById('panel-round-label').textContent = 'Manche ' + (round + 1) + ' / ' + TOTAL_ROUNDS;
@@ -1056,6 +1192,7 @@
     // Show search, hide button
     document.getElementById('search-wrapper').style.display = 'block';
     document.getElementById('submit-btn').style.display = 'flex';
+    document.getElementById('zoom-btn').classList.add('visible');
     document.getElementById('search-input').value = '';
     document.getElementById('action-btn').style.display = 'none';
     if (!('ontouchstart' in window)) document.getElementById('search-input').focus();
@@ -1142,6 +1279,8 @@
   function showActionBtn() {
     document.getElementById('search-wrapper').style.display = 'none';
     document.getElementById('submit-btn').style.display = 'none';
+    document.getElementById('zoom-btn').classList.remove('visible');
+    zoomOutFromTarget();
     const btn = document.getElementById('action-btn');
     btn.style.display = 'block';
     btn.textContent = round < TOTAL_ROUNDS - 1 ? 'Suivant →' : 'Résultats';
@@ -1789,6 +1928,8 @@
     input.value = '';
     document.getElementById('search-wrapper').style.display = 'none';
     document.getElementById('submit-btn').style.display = 'none';
+    document.getElementById('zoom-btn').classList.remove('visible');
+    zoomOutFromTarget();
   }
 
   function updateActive(items) {
